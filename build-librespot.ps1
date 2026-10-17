@@ -48,6 +48,16 @@ $env:Path = "$Toolchain;$env:Path"
 
 $env:ANDROID_NDK_HOME = $ANDROID_NDK
 
+$PatchFile = Join-Path $ProjectRoot "patches\librespot.patch"
+if (Test-Path $PatchFile) {
+    $SubmoduleDir = Join-Path $ProjectRoot "rust\deps\librespot"
+    git -C $SubmoduleDir apply --check $PatchFile 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Applying patches\librespot.patch to rust\deps\librespot..."
+        git -C $SubmoduleDir apply $PatchFile
+    }
+}
+
 foreach ($abi in $AbiMap.Keys) {
 
     $triple = $AbiMap[$abi]

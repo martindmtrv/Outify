@@ -10,7 +10,10 @@ use librespot_connect::{
     ConnectConfig, LoadContextOptions, LoadRequest, LoadRequestOptions, Options, PlayingTrack,
     Spirc,
 };
-use librespot_core::{Session, SpotifyUri, authentication::Credentials, spclient::TransferRequest};
+use librespot_core::{
+    Session, SpotifyUri, authentication::Credentials, config::DeviceType,
+    spclient::TransferRequest,
+};
 use librespot_playback::{
     config::{AudioFormat, Bitrate, PlayerConfig},
     mixer::{self, MixerConfig},
@@ -78,6 +81,10 @@ static SPIRC_RUNTIME: OnceCell<RwLock<Option<SpircRuntime>>> = OnceCell::new();
 static CURRENT_TRACK: OnceCell<Mutex<Option<String>>> = OnceCell::new();
 pub static BITRATE: OnceCell<Mutex<Bitrate>> = OnceCell::new();
 pub static DEVICE_NAME: OnceCell<Mutex<String>> = OnceCell::new();
+/// Icon shown for this device in Spotify Connect device lists.
+static DEVICE_TYPE: Mutex<DeviceType> = Mutex::new(DeviceType::Speaker);
+/// Leaves volume to the system stream instead of scaling samples in software.
+static HARDWARE_VOLUME: AtomicBool = AtomicBool::new(false);
 
 pub static NORMALISE_AUDIO: AtomicBool = AtomicBool::new(false);
 pub static GAPLESS: AtomicBool = AtomicBool::new(false);
@@ -240,15 +247,24 @@ impl SpircRuntime {
 
         let mixer_impl = mixer_builder(mixer_config)?;
 
+        // With hardware volume the app always outputs full scale and the
+        // Connect volume is applied to the system stream instead.
+        let volume_getter: Box<dyn mixer::VolumeGetter + Send> = if HARDWARE_VOLUME.load(Ordering::Relaxed) {
+            Box::new(mixer::NoOpVolume)
+        } else {
+            mixer_impl.get_soft_volume()
+        };
+
         let player = Player::new(
             player_config,
             session.clone(),
-            mixer_impl.get_soft_volume(),
+            volume_getter,
             move || sink_builder(None, audio_format),
         );
 
         let connect_config = ConnectConfig {
             name: device_name,
+            device_type: device_type(),
             ..Default::default()
         };
 
@@ -721,6 +737,27 @@ fn handle_event(event: PlayerEvent) {
         PlayerEvent::VolumeChanged { volume } => {
             notify_device_volume(volume);
         }
+        // Also emitted for changes made by other Connect clients.
+        PlayerEvent::ShuffleChanged { shuffle } => {
+            IS_SHUFFLING.store(shuffle, std::sync::atomic::Ordering::Relaxed);
+            notify_device_args(
+                crate::jni_impl::spirc::METHOD_DEVICE_SHUFFLE,
+                vec![crate::jni_utils::jni_bridge::BridgeArg::Bool(shuffle)],
+            );
+        }
+        PlayerEvent::RepeatChanged { context, track } => {
+            REPEAT_MODE.store(
+                RepeatMode::from_states(context, track) as u8,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            notify_device_args(
+                crate::jni_impl::spirc::METHOD_DEVICE_REPEAT,
+                vec![
+                    crate::jni_utils::jni_bridge::BridgeArg::Bool(context),
+                    crate::jni_utils::jni_bridge::BridgeArg::Bool(track),
+                ],
+            );
+        }
         _ => {
             // Not yet implemented
         }
@@ -761,6 +798,27 @@ fn current_settings() -> RuntimeSettings {
         bitrate,
         crossfade: Duration::from_millis(CROSSFADE.load(Ordering::Relaxed) as u64),
     }
+}
+
+/// Sets the icon used by the next Connect runtime build.
+pub fn set_device_type(device_type: DeviceType) {
+    if let Ok(mut guard) = DEVICE_TYPE.lock() {
+        *guard = device_type;
+    }
+}
+
+/// Applies to Connect runtimes built afterwards.
+pub fn set_hardware_volume(enabled: bool) {
+    HARDWARE_VOLUME.store(enabled, Ordering::Relaxed);
+}
+
+pub fn device_type() -> DeviceType {
+    DEVICE_TYPE.lock().map(|t| *t).unwrap_or_default()
+}
+
+/// Name the Connect runtime currently announces.
+pub fn device_name() -> String {
+    current_settings().device_name
 }
 
 /// Records the requested playback settings so [`start_runtime`] can apply them.
@@ -1046,16 +1104,19 @@ pub fn notify_device_state(is_active: bool) {
 }
 
 pub fn notify_device_volume(volume: u16) {
+    notify_device_args(
+        crate::jni_impl::spirc::METHOD_DEVICE_VOLUME,
+        vec![crate::jni_utils::jni_bridge::BridgeArg::Int(volume as i32)],
+    );
+}
+
+fn notify_device_args(method_idx: usize, args: Vec<crate::jni_utils::jni_bridge::BridgeArg>) {
     let cb = match crate::jni_impl::spirc::device_cb() {
         Some(c) => c,
         None => return,
     };
 
-    crate::jni_utils::jni_bridge::dispatch(
-        cb,
-        crate::jni_impl::spirc::METHOD_DEVICE_VOLUME,
-        vec![crate::jni_utils::jni_bridge::BridgeArg::Int(volume as i32)],
-    );
+    crate::jni_utils::jni_bridge::dispatch(cb, method_idx, args);
 }
 
 pub fn current_track() -> Option<String> {

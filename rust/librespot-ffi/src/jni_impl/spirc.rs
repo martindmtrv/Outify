@@ -25,7 +25,8 @@ use crate::{
 
 // BufferCallback: void started(), void stopped()
 pub static BUFFER_CB: OnceCell<Mutex<Option<Arc<JavaCallback>>>> = OnceCell::new();
-// DeviceCallback: void becameActive(), void becameInactive(), void volumeChanged(int)
+// DeviceCallback: void becameActive(), void becameInactive(), void volumeChanged(int),
+// void shuffleChanged(boolean), void repeatChanged(boolean, boolean)
 pub static DEVICE_CB: OnceCell<Mutex<Option<Arc<JavaCallback>>>> = OnceCell::new();
 
 pub const METHOD_BUFFER_STARTED: usize = 0;
@@ -34,6 +35,8 @@ pub const METHOD_BUFFER_STOPPED: usize = 1;
 pub const METHOD_DEVICE_ACTIVE: usize = 0;
 pub const METHOD_DEVICE_INACTIVE: usize = 1;
 pub const METHOD_DEVICE_VOLUME: usize = 2;
+pub const METHOD_DEVICE_SHUFFLE: usize = 3;
+pub const METHOD_DEVICE_REPEAT: usize = 4;
 
 pub fn buffer_cb() -> Option<Arc<JavaCallback>> {
     let m = BUFFER_CB.get()?;
@@ -270,6 +273,8 @@ pub extern "system" fn set_device_callback(
             ("becameActive", "()V"),
             ("becameInactive", "()V"),
             ("volumeChanged", "(I)V"),
+            ("shuffleChanged", "(Z)V"),
+            ("repeatChanged", "(ZZ)V"),
         ],
     ) {
         Ok(c) => c,

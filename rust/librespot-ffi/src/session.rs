@@ -51,7 +51,27 @@ pub async fn initialize_session() -> Result<(), librespot_core::Error> {
         }
     };
 
-    // Geting session cache dir
+    let cache = open_cache()?;
+    trace!("cache initialized");
+
+    let handle = rt.handle().clone();
+    let session_config = SessionConfig {
+        client_id: KEYMASTER_CLIENT_ID.to_owned(),
+        device_id: device_id(),
+        ..Default::default()
+    };
+    let session = Session::with_handle(session_config, Some(cache), handle);
+
+    let mut guard = container.write().unwrap();
+    *guard = Some(session.clone());
+
+    start_shutdown_listener(&session);
+    debug!("session initialized");
+    Ok(())
+}
+
+/// Opens the librespot cache that holds the credentials and audio files.
+pub fn open_cache() -> Result<Cache, librespot_core::Error> {
     let os_cache_dir = match CACHE_DIR.get() {
         Some(dir) => dir.to_path_buf(),
         None => {
@@ -66,30 +86,40 @@ pub async fn initialize_session() -> Result<(), librespot_core::Error> {
             return Err(librespot_core::Error::internal("files dir not set"));
         }
     };
-    let cache = match Cache::new(Some(&os_files_dir), None, Some(&os_cache_dir), None) {
-        Ok(c) => c,
-        Err(e) => {
-            error!("cache init failed: {e}");
-            return Err(librespot_core::Error::internal(format!(
-                "cache init failed: {e}"
-            )));
-        }
-    };
-    trace!("cache initialized");
+    Cache::new(Some(&os_files_dir), None, Some(&os_cache_dir), None).map_err(|e| {
+        error!("cache init failed: {e}");
+        librespot_core::Error::internal(format!("cache init failed: {e}"))
+    })
+}
 
-    let handle = rt.handle().clone();
-    let session_config = SessionConfig {
-        client_id: KEYMASTER_CLIENT_ID.to_owned(),
-        ..Default::default()
-    };
-    let session = Session::with_handle(session_config, Some(cache), handle);
+/// Connect device id, persisted so this device keeps one identity across
+/// rebuilds. Discovery announces the same id, so a Spotify client that hands
+/// over credentials finds the device it picked.
+pub fn device_id() -> String {
+    static DEVICE_ID: OnceCell<String> = OnceCell::new();
 
-    let mut guard = container.write().unwrap();
-    *guard = Some(session.clone());
+    DEVICE_ID
+        .get_or_init(|| {
+            let generated = || SessionConfig::default().device_id;
+            let Some(path) = FILES_DIR.get().map(|dir| dir.join("device_id")) else {
+                warn!("files dir not set, using a temporary device id");
+                return generated();
+            };
 
-    start_shutdown_listener(&session);
-    debug!("session initialized");
-    Ok(())
+            if let Ok(id) = std::fs::read_to_string(&path) {
+                let id = id.trim();
+                if !id.is_empty() {
+                    return id.to_string();
+                }
+            }
+
+            let id = generated();
+            if let Err(e) = std::fs::write(&path, &id) {
+                warn!("device id could not be persisted: {e}");
+            }
+            id
+        })
+        .clone()
 }
 
 // Connects the already initialized session

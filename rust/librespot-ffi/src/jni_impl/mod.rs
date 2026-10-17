@@ -1,5 +1,6 @@
 // We seperate JNI only logic from the rust wrapper
 
+mod discovery;
 mod metadata;
 mod oauth;
 pub mod playback;

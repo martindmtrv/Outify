@@ -1,0 +1,153 @@
+diff --git a/connect/src/model.rs b/connect/src/model.rs
+index 10f25f1..d5c250f 100644
+--- a/connect/src/model.rs
++++ b/connect/src/model.rs
+@@ -135,9 +135,11 @@ impl TryFrom<SkipTo> for PlayingTrack {
+     fn try_from(value: SkipTo) -> Result<Self, Self::Error> {
+         // order of checks is important, as the index can be 0, but still has an uid or uri provided,
+         // so we only use the index as last resort
+-        if let Some(uri) = value.track_uri {
++        // clients may send empty strings for the identifiers they don't use, e.g. an
++        // empty uri when skipping to a playlist entry by uid
++        if let Some(uri) = value.track_uri.filter(|uri| !uri.is_empty()) {
+             Ok(PlayingTrack::Uri(uri))
+-        } else if let Some(uid) = value.track_uid {
++        } else if let Some(uid) = value.track_uid.filter(|uid| !uid.is_empty()) {
+             Ok(PlayingTrack::Uid(uid))
+         } else if let Some(index) = value.track_index {
+             Ok(PlayingTrack::Index(index))
+diff --git a/connect/src/spirc.rs b/connect/src/spirc.rs
+index d775851..a6aa31b 100644
+--- a/connect/src/spirc.rs
++++ b/connect/src/spirc.rs
+@@ -814,7 +814,7 @@ impl SpircTask {
+             SpircCommand::RepeatTrack(repeat) => self.handle_repeat_track(repeat),
+             SpircCommand::SetPosition(position) => self.handle_seek(position),
+             SpircCommand::SetVolume(volume) => self.set_volume(volume),
+-            SpircCommand::Load(command) => self.handle_load(command, None, None).await?,
++            SpircCommand::Load(command) => self.handle_load(command, None, None, None).await?,
+             SpircCommand::AddToQueue(uri) => self.handle_add_to_queue(uri).await,
+ 
+             // Added for Outify
+@@ -1229,6 +1229,9 @@ impl SpircTask {
+                     .and_then(|s| s.track_index)
+                     .map(|i| i as usize);
+ 
++                // the order the user sorted the context by, e.g. a playlist by date added
++                let sorting = play.context.metadata.get("sorting.criteria").cloned();
++
+                 self.handle_load(
+                     LoadRequest {
+                         context,
+@@ -1241,6 +1244,7 @@ impl SpircTask {
+                     },
+                     play.context.pages.pop(),
+                     fallback_index,
++                    sorting.as_deref(),
+                 )
+                 .await?;
+ 
+@@ -1473,6 +1477,7 @@ impl SpircTask {
+         cmd: LoadRequest,
+         page: Option<ContextPage>,
+         fallback_index: Option<usize>,
++        sorting: Option<&str>,
+     ) -> Result<(), Error> {
+         self.connect_state
+             .reset_context(if let PlayContext::Uri(ref uri) = cmd.context {
+@@ -1500,6 +1505,9 @@ impl SpircTask {
+         // tracks with uri and uid, so we merge the new context with the resolved/existing context
+         self.connect_state.merge_context(page);
+ 
++        // before resolving the playing track, so its index is the one in the sorted context
++        self.connect_state.sort_context(sorting)?;
++
+         // load here, so that we clear the queue only after we definitely retrieved a new context
+         self.connect_state.clear_next_tracks();
+         self.connect_state.clear_restrictions();
+diff --git a/connect/src/state/context.rs b/connect/src/state/context.rs
+index 5913022..cb3ad6d 100644
+--- a/connect/src/state/context.rs
++++ b/connect/src/state/context.rs
+@@ -396,6 +396,59 @@ impl ConnectState {
+         iteration.is_none_or(|i| i == 0)
+     }
+ 
++    /// Orders the default context like the client that started playback.
++    ///
++    /// `criteria` is the comma separated `sorting.criteria` of a play command,
++    /// e.g. `added_at DESC,album_title,original_index`. Keys a track has no
++    /// metadata for are skipped, and ties keep the order of the context
++    /// itself, so `None` restores that order.
++    pub fn sort_context(&mut self, criteria: Option<&str>) -> Result<(), StateError> {
++        let keys: Vec<(&str, bool)> = criteria
++            .unwrap_or_default()
++            .split(',')
++            .filter_map(|key| {
++                let mut parts = key.split_whitespace();
++                let name = parts.next()?;
++                let descending = parts.next().is_some_and(|o| o.eq_ignore_ascii_case("desc"));
++                Some((name, descending))
++            })
++            .collect();
++
++        let ctx = self.get_context_mut(ContextType::Default)?;
++        ctx.tracks.sort_by(|a, b| {
++            for &(key, descending) in &keys {
++                let order = if key == "original_index" {
++                    a.get_context_index().cmp(&b.get_context_index())
++                } else {
++                    match (a.metadata.get(key), b.metadata.get(key)) {
++                        (Some(a), Some(b)) => match (a.parse::<i64>(), b.parse::<i64>()) {
++                            (Ok(a), Ok(b)) => a.cmp(&b),
++                            _ => a.cmp(b),
++                        },
++                        // tracks without the key go last, regardless of the direction
++                        (Some(_), None) => return std::cmp::Ordering::Less,
++                        (None, Some(_)) => return std::cmp::Ordering::Greater,
++                        (None, None) => std::cmp::Ordering::Equal,
++                    }
++                };
++                let order = if descending { order.reverse() } else { order };
++                if order.is_ne() {
++                    return order;
++                }
++            }
++            a.get_context_index().cmp(&b.get_context_index())
++        });
++
++        match criteria {
++            Some(criteria) => ctx
++                .metadata
++                .insert("sorting.criteria".to_string(), criteria.to_string()),
++            None => ctx.metadata.remove("sorting.criteria"),
++        };
++
++        Ok(())
++    }
++
+     pub fn merge_context(&mut self, new_page: Option<ContextPage>) -> Option<()> {
+         let current_context = self.get_context_mut(ContextType::Default).ok()?;
+ 
+diff --git a/connect/src/state/transfer.rs b/connect/src/state/transfer.rs
+index e91ec5f..30feb43 100644
+--- a/connect/src/state/transfer.rs
++++ b/connect/src/state/transfer.rs
+@@ -133,6 +133,17 @@ impl ConnectState {
+         self.set_active_context(context_ty);
+         self.fill_up_context = context_ty;
+ 
++        // keep the order the user sorted the context by on the transferring client
++        let sorting = transfer
++            .current_session
++            .context
++            .metadata
++            .get("sorting.criteria");
++        debug!("transferred context sorting: {sorting:?}");
++        if context_ty == ContextType::Default && sorting.is_some() {
++            self.sort_context(sorting.map(String::as_str))?;
++        }
++
+         let ctx = self.get_context(self.active_context)?;
+ 
+         let current_index = match transfer.current_session.current_uid.as_ref() {

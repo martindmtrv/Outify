@@ -9,11 +9,13 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.GlanceId
 import androidx.media3.common.util.UnstableApi
 import cc.tomko.outify.core.spirc.SpircController
+import cc.tomko.outify.core.spirc.VolumeController
 import cc.tomko.outify.data.database.AppDatabase
 import cc.tomko.outify.data.repository.SettingsRepository
 import cc.tomko.outify.ui.viewmodel.detail.DetailViewModelStore
 import cc.tomko.outify.ui.viewmodel.detail.setDetailViewModelStore
 import cc.tomko.outify.utils.ExceptionCollector
+import cc.tomko.outify.utils.isTelevision
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +42,9 @@ class OutifyApplication : Application() {
 
     @Inject
     lateinit var spircController: SpircController
+
+    @Inject
+    lateinit var volumeController: VolumeController
 
     @Inject
     lateinit var detailViewModelStore: DetailViewModelStore
@@ -75,8 +80,10 @@ class OutifyApplication : Application() {
 
         appScope.launch {
             val (spotifyId, spotifySecret) = settingsRepository.resolveClientCredentials()
+            val isTelevision = isTelevision()
 
-            if (spotifySecret.isBlank() || spotifyId.isBlank()) {
+            // A TV only receives playback, which needs no Web API client.
+            if (!isTelevision && (spotifySecret.isBlank() || spotifyId.isBlank())) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@OutifyApplication,
@@ -89,6 +96,8 @@ class OutifyApplication : Application() {
             }
 
             LibrespotFfi.libInit(applicationContext, spotifyId, spotifySecret)
+            if (isTelevision) LibrespotFfi.setDeviceType("tv")
+            LibrespotFfi.setHardwareVolume(volumeController.usesSystemVolume)
 
             spircController.start()
         }

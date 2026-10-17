@@ -1,11 +1,15 @@
 package cc.tomko.outify.core.spirc
 
+import android.content.Context
 import android.util.Log
 import cc.tomko.outify.core.Session
 import cc.tomko.outify.core.SessionCallback
 import cc.tomko.outify.data.repository.SettingsRepository
 import cc.tomko.outify.playback.PlaybackStateHolder
+import cc.tomko.outify.playback.model.RepeatMode
 import cc.tomko.outify.playback.model.getSpeed
+import cc.tomko.outify.utils.isTelevision
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,10 +30,12 @@ private const val RESTART_TIMEOUT_MS = 30_000L
  */
 @Singleton
 class SpircController @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val session: Session,
     private val spirc: SpircWrapper,
     private val playbackStateHolder: PlaybackStateHolder,
     private val settingsRepository: SettingsRepository,
+    private val volumeController: VolumeController,
 ) {
     private val _state = MutableStateFlow(SpircState.Stopped)
 
@@ -61,7 +67,11 @@ class SpircController @Inject constructor(
             }
 
             override fun onRestarted() {
+                // The first start fails without credentials, so a rebuild
+                // after login can be the first runtime that comes up.
+                registerCallbacks()
                 updateState(SpircState.Ready)
+                volumeController.startSystemVolumeSync()
                 refreshPlaybackState()
             }
 
@@ -126,6 +136,11 @@ class SpircController @Inject constructor(
                 registerCallbacks()
                 updateState(SpircState.Ready)
 
+                volumeController.startSystemVolumeSync()
+
+                // A receiver waits to be picked instead of taking over playback.
+                if (context.isTelevision()) return
+
                 spirc.scope.launch {
                     activateAndTransfer()
                 }
@@ -159,6 +174,8 @@ class SpircController @Inject constructor(
 
         Spirc.deviceCallback(object : SpircDeviceCallback {
             override fun becameActive() {
+                // Connect ignores volume while inactive, so report it again now.
+                volumeController.startSystemVolumeSync()
                 spirc.startPlaybackService()
                 playbackStateHolder.setActiveDevice(true)
             }
@@ -168,7 +185,17 @@ class SpircController @Inject constructor(
             }
 
             override fun volumeChanged(volume: Int) {
-                //volumeController.onRemoteVolumeChanged(volume)
+                if (volumeController.usesSystemVolume) volumeController.onRemoteVolumeChanged(volume)
+            }
+
+            override fun shuffleChanged(enabled: Boolean) {
+                playbackStateHolder.setShuffle(enabled)
+            }
+
+            override fun repeatChanged(repeat: Boolean, repeatTrack: Boolean) {
+                spirc.scope.launch {
+                    playbackStateHolder.setRepeatMode(RepeatMode.fromSettings(repeat, repeatTrack))
+                }
             }
         })
     }

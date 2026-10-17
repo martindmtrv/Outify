@@ -7,6 +7,7 @@ members = [
 	"deps/librespot/oauth",
 	"deps/librespot/playback",
 	"deps/librespot/connect",
+	"deps/librespot/discovery",
 ]
 resolver = "3"
 

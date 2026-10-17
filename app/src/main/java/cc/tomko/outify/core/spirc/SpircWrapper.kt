@@ -14,6 +14,7 @@ import cc.tomko.outify.data.repository.SavedQueueRepository
 import cc.tomko.outify.data.repository.SettingsRepository
 import cc.tomko.outify.playback.PlaybackStateHolder
 import cc.tomko.outify.services.PlaybackService
+import cc.tomko.outify.utils.isTelevision
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,9 @@ class SpircWrapper @Inject constructor(
         get() = _isUsable.value
 
     val isUsableFlow: StateFlow<Boolean> = _isUsable.asStateFlow()
+
+    /** On TV the app is a Connect receiver; see [playerPause]. */
+    private val isReceiver = context.isTelevision()
 
     /** Reflects a lifecycle state published by [SpircController]. */
     fun onStateChanged(state: SpircState) {
@@ -362,6 +366,13 @@ class SpircWrapper @Inject constructor(
      */
     @Synchronized
     override fun playerPause(): Boolean {
+        if (isReceiver) {
+            // A receiver is driven by other Spotify clients, so a pause here
+            // must not block their next Play.
+            scope.launch { playbackStateHolder.setPlaying(false) }
+            return !isUsable || Spirc.playerPause()
+        }
+
         // Record intent even during a rebuild, before a delayed Playing event can arrive.
         playbackStateHolder.playbackIntent.pauseByUser()
         Spirc.setPlaybackPaused(true)

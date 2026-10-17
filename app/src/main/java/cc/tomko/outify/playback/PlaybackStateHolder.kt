@@ -123,6 +123,10 @@ class PlaybackStateHolder @Inject constructor() {
         _state.update { it.copy(isActiveDevice = active) }
     }
 
+    fun setShuffle(enabled: Boolean) {
+        _state.update { it.copy(shuffleEnabled = enabled) }
+    }
+
     fun setVolume(volume: Int) {
         _state.update { it.copy(volume = volume) }
     }

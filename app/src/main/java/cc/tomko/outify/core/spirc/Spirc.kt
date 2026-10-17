@@ -43,6 +43,16 @@ interface SpircDeviceCallback {
      * u16 volume
      */
     fun volumeChanged(volume: Int)
+
+    /**
+     * Called when shuffle is toggled, here or by another Connect client
+     */
+    fun shuffleChanged(enabled: Boolean)
+
+    /**
+     * Called when repeat is changed, here or by another Connect client
+     */
+    fun repeatChanged(repeat: Boolean, repeatTrack: Boolean)
 }
 
 object Spirc {

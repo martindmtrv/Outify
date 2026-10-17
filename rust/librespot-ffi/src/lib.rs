@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+pub mod discovery;
 pub mod jni_impl;
 pub mod jni_utils;
 pub mod metadata;
@@ -124,6 +125,40 @@ pub extern "system" fn Java_cc_tomko_outify_LibrespotFfi_libInit(
     };
 
     spotify::client::init_client(client_id, client_secret);
+}
+
+/// Sets the icon this device shows in Spotify Connect device lists, e.g. "tv".
+/// Applies to Connect runtimes built afterwards.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cc_tomko_outify_LibrespotFfi_setDeviceType(
+    mut env: JNIEnv,
+    _class: JClass,
+    device_type: JString,
+) {
+    let device_type: String = match env.get_string(&device_type) {
+        Ok(t) => t.into(),
+        Err(e) => {
+            error!("failed to read device_type from jni: {e}");
+            return;
+        }
+    };
+
+    match device_type.parse() {
+        Ok(t) => spirc::set_device_type(t),
+        Err(()) => warn!("unknown device type {device_type}"),
+    }
+}
+
+/// Leaves volume to the system stream: the app outputs full scale and Kotlin
+/// applies Connect volume changes to the device. Applies to Connect runtimes
+/// built afterwards.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cc_tomko_outify_LibrespotFfi_setHardwareVolume(
+    _env: JNIEnv,
+    _class: JClass,
+    enabled: jni::sys::jboolean,
+) {
+    spirc::set_hardware_volume(enabled != 0);
 }
 
 #[unsafe(no_mangle)]

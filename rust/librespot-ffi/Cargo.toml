@@ -19,10 +19,12 @@ librespot-protocol = { path = "../deps/librespot/protocol", default-features = f
 librespot-metadata = { path = "../deps/librespot/metadata", default-features = false , features = ["rustls-tls-webpki-roots"]}
 librespot-oauth = { path = "../deps/librespot/oauth", default-features = false, features = ["rustls-tls-webpki-roots"] }
 librespot-playback = { path = "../deps/librespot/playback", default-features = false, features = ["android-backend"] }
+librespot-discovery = { path = "../deps/librespot/discovery", default-features = false, features = ["with-libmdns", "rustls-tls-webpki-roots"] }
 librespot-connect = { path = "../deps/librespot/connect", default-features = false, features = ["rustls-tls-webpki-roots"]}
 serde_json = "1.0.149"
 serde = "1.0.228"
 bytes = "1.11.0"
+futures-util = "0.3"
 regex = "1.12.3"
 base64 = "0.22.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots" ] }

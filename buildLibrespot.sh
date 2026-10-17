@@ -128,6 +128,14 @@ echo "Using ANDROID_NDK : $ANDROID_NDK  (NDK $NDK_VERSION)"
 echo "Using CC (arm64)  : $CC_aarch64_linux_android"
 echo "Using CC (armv7)  : $CC_armv7_linux_androideabi"
 
+# Apply submodule patches if needed
+if [ -f "$PROJECT_ROOT/patches/librespot.patch" ]; then
+    if git -C "$PROJECT_ROOT/rust/deps/librespot" apply --check "$PROJECT_ROOT/patches/librespot.patch" >/dev/null 2>&1; then
+        echo "Applying patches/librespot.patch to rust/deps/librespot..."
+        git -C "$PROJECT_ROOT/rust/deps/librespot" apply "$PROJECT_ROOT/patches/librespot.patch"
+    fi
+fi
+
 # Building ABIs
 for ABI in "${!ABI_TRIPLE_MAP[@]}"; do
     TRIPLE=${ABI_TRIPLE_MAP[$ABI]}
