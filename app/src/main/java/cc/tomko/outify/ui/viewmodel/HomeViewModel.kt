@@ -125,11 +125,13 @@ class HomeViewModel @Inject constructor(
                         delay(200)
                         _isPlaybackLoggedIn.value =
                             withContext(Dispatchers.IO) { authManager.hasCachedCredentials() }
+                        loadData()
                     }
 
                     is AuthStateEvent.PlaybackLoggedOut -> {
                         _isPlaybackLoggedIn.value =
                             withContext(Dispatchers.IO) { authManager.hasCachedCredentials() }
+                        loadData()
                     }
                 }
             }

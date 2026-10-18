@@ -105,6 +105,15 @@ class TvViewModel @Inject constructor(
         refreshLogin()
 
         viewModelScope.launch {
+            spircState.collect { state ->
+                if (state == SpircState.Ready) {
+                    refreshLogin()
+                    AuthStateEventBus.tryEmitPlaybackLoggedIn()
+                }
+            }
+        }
+
+        viewModelScope.launch {
             while (isActive) {
                 _positionMs.value = playbackStateHolder.estimatePosition().inWholeMilliseconds
                 delay(500L)

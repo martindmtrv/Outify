@@ -148,11 +148,16 @@ impl SpotifyClient {
         }
     }
 
-    /// Whether a stored token exists. Does not refresh, so a transient
-    /// network failure while refreshing does not log the user out.
-    /// Revoked refresh tokens remove the stored token in `refresh_token`.
+    /// Whether a stored token exists or an active authenticated session exists.
     pub async fn is_oauth_authenticated(&self) -> bool {
-        matches!(self.read_token_file(), Ok(Some(_)))
+        if matches!(self.read_token_file(), Ok(Some(_))) {
+            return true;
+        }
+
+        match crate::session::with_session(|session| !session.is_invalid() && !session.username().is_empty()) {
+            Ok(true) => true,
+            _ => false,
+        }
     }
 
     pub async fn get_scope(&self) -> Option<String> {
@@ -180,16 +185,61 @@ impl SpotifyClient {
     }
 
     pub async fn load_token(&self) -> Result<Option<WebApiToken>, SpotifyApiError> {
-        let Some(token) = self.read_token_file()? else {
-            return Ok(None);
-        };
-
-        if token.is_expired() {
-            let refreshed = self.refresh_token(&token).await?;
-            return Ok(Some(refreshed));
+        if let Some(token) = self.read_token_file()? {
+            if token.is_expired() {
+                let refreshed = self.refresh_token(&token).await?;
+                return Ok(Some(refreshed));
+            }
+            return Ok(Some(token));
         }
 
-        Ok(Some(token))
+        // Check if an in-memory token (e.g. from session) was already acquired and is valid
+        {
+            let guard = self.token.read().await;
+            if let Some(ref t) = *guard {
+                if !t.is_expired() {
+                    return Ok(Some(t.clone()));
+                }
+            }
+        }
+
+        // Fall back to requesting a token from the active librespot session
+        let session_res = crate::session::with_session_async(|session| {
+            Box::pin(async move {
+                if session.is_invalid() || session.username().is_empty() {
+                    return None;
+                }
+                let token_provider = session.token_provider();
+                let scopes = "user-read-private,user-read-email,user-top-read,user-library-read,playlist-read-private";
+                match token_provider.get_token(scopes).await {
+                    Ok(tok) => Some(tok),
+                    Err(e) => {
+                        warn!("session token with scopes failed: {e}, falling back without scopes");
+                        match token_provider.get_token("").await {
+                            Ok(tok) => Some(tok),
+                            Err(e2) => {
+                                error!("session token without scopes failed: {e2}");
+                                None
+                            }
+                        }
+                    }
+                }
+            })
+        }).await;
+
+        if let Ok(Some(tok)) = session_res {
+            let web_token = WebApiToken::new(
+                tok.access_token,
+                String::new(),
+                tok.expires_in.as_secs(),
+                tok.scopes.join(" "),
+            );
+            let mut guard = self.token.write().await;
+            *guard = Some(web_token.clone());
+            return Ok(Some(web_token));
+        }
+
+        Ok(None)
     }
 
     pub(crate) async fn refresh_token(
@@ -197,6 +247,33 @@ impl SpotifyClient {
         token: &WebApiToken,
     ) -> Result<WebApiToken, SpotifyApiError> {
         let _guard = self.refresh_lock.lock().await;
+
+        if token.refresh_token.is_empty() {
+            let session_res = crate::session::with_session_async(|session| {
+                Box::pin(async move {
+                    if session.is_invalid() || session.username().is_empty() {
+                        return None;
+                    }
+                    let token_provider = session.token_provider();
+                    let scopes = "user-read-private,user-read-email,user-top-read,user-library-read,playlist-read-private";
+                    token_provider.get_token(scopes).await.ok()
+                })
+            }).await;
+
+            if let Ok(Some(tok)) = session_res {
+                let new_token = WebApiToken::new(
+                    tok.access_token,
+                    String::new(),
+                    tok.expires_in.as_secs(),
+                    tok.scopes.join(" "),
+                );
+                let mut guard = self.token.write().await;
+                *guard = Some(new_token.clone());
+                return Ok(new_token);
+            }
+
+            return Err(SpotifyApiError::Generic("Cannot refresh session token".to_string()));
+        }
 
         // Another request may have refreshed while we waited for the lock;
         // reusing the old (rotated) refresh token would then fail.

@@ -5,6 +5,8 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cc.tomko.outify.R
+import cc.tomko.outify.core.AuthStateEvent
+import cc.tomko.outify.core.AuthStateEventBus
 import cc.tomko.outify.core.SpClient
 import cc.tomko.outify.core.UserProfile
 import cc.tomko.outify.core.model.Album
@@ -117,6 +119,21 @@ class SearchViewModel @Inject constructor(
 
     init {
         _isLoggedIn.value = spClient.isOAuthAuthenticated()
+
+        viewModelScope.launch {
+            AuthStateEventBus.events.collect { event ->
+                when (event) {
+                    is AuthStateEvent.AccountLoggedIn,
+                    is AuthStateEvent.PlaybackLoggedIn -> {
+                        _isLoggedIn.value = spClient.isOAuthAuthenticated()
+                    }
+                    is AuthStateEvent.AccountLoggedOut,
+                    is AuthStateEvent.PlaybackLoggedOut -> {
+                        _isLoggedIn.value = spClient.isOAuthAuthenticated()
+                    }
+                }
+            }
+        }
 
         viewModelScope.launch {
             queryFlow
