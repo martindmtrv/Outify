@@ -1,5 +1,6 @@
 package cc.tomko.outify.ui.tv
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,17 +52,73 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import cc.tomko.outify.ALBUM_COVER_URL
 import cc.tomko.outify.core.model.CoverSize
 import cc.tomko.outify.core.model.PlayableAudio
 import cc.tomko.outify.core.model.getCover
 import cc.tomko.outify.core.spirc.SpircState
 import cc.tomko.outify.playback.model.RepeatMode
+import cc.tomko.outify.ui.viewmodel.HomeViewModel
+import cc.tomko.outify.ui.viewmodel.SearchViewModel
 import cc.tomko.outify.ui.viewmodel.TvViewModel
 import coil3.compose.AsyncImage
 
 @Composable
-fun TvScreen(viewModel: TvViewModel) {
+fun TvScreen(
+    viewModel: TvViewModel,
+    homeViewModel: HomeViewModel = hiltViewModel(),
+    searchViewModel: SearchViewModel = hiltViewModel(),
+) {
+    val selectedTab by viewModel.selectedTab.collectAsState()
+    val audio by viewModel.currentAudio.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
+
+    // Remote Back Handler: return to Home if currently on Search or Now Playing
+    BackHandler(enabled = selectedTab != TvNavTab.HOME) {
+        viewModel.selectTab(TvNavTab.HOME)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        // Left Navigation Rail (Spotify TV Style Sidebar)
+        TvSidebar(
+            selectedTab = selectedTab,
+            onSelectTab = { viewModel.selectTab(it) },
+            currentAudio = audio,
+            isPlaying = isPlaying,
+            onMiniPlayerClick = { viewModel.selectTab(TvNavTab.NOW_PLAYING) },
+        )
+
+        // Main Content Area
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(start = 28.dp, top = 24.dp, end = 40.dp, bottom = 24.dp),
+        ) {
+            when (selectedTab) {
+                TvNavTab.SEARCH -> TvSearchScreen(
+                    tvViewModel = viewModel,
+                    searchViewModel = searchViewModel,
+                )
+                TvNavTab.HOME -> TvHomeScreen(
+                    tvViewModel = viewModel,
+                    homeViewModel = homeViewModel,
+                )
+                TvNavTab.NOW_PLAYING -> TvNowPlayingScreen(
+                    viewModel = viewModel,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TvNowPlayingScreen(viewModel: TvViewModel) {
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val spircState by viewModel.spircState.collectAsState()
     val deviceName by viewModel.deviceName.collectAsState()
@@ -68,26 +126,18 @@ fun TvScreen(viewModel: TvViewModel) {
     val isActive by viewModel.isActiveDevice.collectAsState()
     val error by viewModel.discoveryError.collectAsState()
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            // Overscan-safe margins recommended for TV layouts.
-            .padding(horizontal = 58.dp, vertical = 28.dp),
-    ) {
-        val nowPlaying = audio?.takeIf { isLoggedIn && isActive }
+    val nowPlaying = audio?.takeIf { isLoggedIn && isActive }
 
-        AnimatedContent(targetState = nowPlaying, label = "tv-content") { current ->
-            if (current != null) {
-                NowPlaying(viewModel, current)
-            } else {
-                PickThisDevice(
-                    deviceName = deviceName,
-                    isLoggedIn = isLoggedIn,
-                    isConnecting = spircState == SpircState.Starting || spircState == SpircState.Rebuilding,
-                    error = error,
-                )
-            }
+    AnimatedContent(targetState = nowPlaying, label = "tv-content") { current ->
+        if (current != null) {
+            NowPlaying(viewModel, current)
+        } else {
+            PickThisDevice(
+                deviceName = deviceName,
+                isLoggedIn = isLoggedIn,
+                isConnecting = spircState == SpircState.Starting || spircState == SpircState.Rebuilding,
+                error = error,
+            )
         }
     }
 }

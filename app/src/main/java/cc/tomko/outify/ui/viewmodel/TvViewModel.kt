@@ -9,13 +9,16 @@ import cc.tomko.outify.core.AuthManager
 import cc.tomko.outify.core.AuthStateEventBus
 import cc.tomko.outify.core.Discovery
 import cc.tomko.outify.core.DiscoveryCallback
+import cc.tomko.outify.core.model.OutifyUri
 import cc.tomko.outify.core.model.PlayableAudio
+import cc.tomko.outify.core.model.toOutifyUri
 import cc.tomko.outify.core.spirc.SpircController
 import cc.tomko.outify.core.spirc.SpircState
 import cc.tomko.outify.core.spirc.SpircWrapper
 import cc.tomko.outify.data.repository.SettingsRepository
 import cc.tomko.outify.playback.PlaybackStateHolder
 import cc.tomko.outify.playback.model.RepeatMode
+import cc.tomko.outify.ui.tv.TvNavTab
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +52,9 @@ class TvViewModel @Inject constructor(
     val spirc: SpircWrapper,
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
+    private val _selectedTab = MutableStateFlow(TvNavTab.HOME)
+    val selectedTab: StateFlow<TvNavTab> = _selectedTab.asStateFlow()
+
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
@@ -162,6 +168,20 @@ class TvViewModel @Inject constructor(
     fun cycleRepeat() {
         val next = repeatMode.value.next()
         spirc.repeat(next.repeat, next.repeatTrack)
+    }
+
+    fun selectTab(tab: TvNavTab) {
+        _selectedTab.value = tab
+    }
+
+    fun playTrack(audio: PlayableAudio) {
+        spirc.load(audio.toOutifyUri())
+        playbackStateHolder.setAudio(audio)
+    }
+
+    fun playUri(uri: String) {
+        val outifyUri = OutifyUri.fromUriString(uri)
+        spirc.load(outifyUri, null)
     }
 
     private fun refreshLogin() {
