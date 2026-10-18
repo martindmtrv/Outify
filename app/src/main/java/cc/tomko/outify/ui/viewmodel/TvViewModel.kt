@@ -184,13 +184,22 @@ class TvViewModel @Inject constructor(
     }
 
     fun playTrack(audio: PlayableAudio) {
-        spirc.load(audio.toOutifyUri())
+        spirc.activate()
+        val albumUri = audio.sourceTrack?.album?.uri
+        if (albumUri != null && albumUri.startsWith("spotify:album:")) {
+            spirc.load(OutifyUri.fromUriString(albumUri), audio.toOutifyUri())
+        } else {
+            spirc.load(audio.toOutifyUri(), null)
+        }
         playbackStateHolder.setAudio(audio)
+        selectTab(TvNavTab.NOW_PLAYING)
     }
 
     fun playUri(uri: String) {
+        spirc.activate()
         val outifyUri = OutifyUri.fromUriString(uri)
         spirc.load(outifyUri, null)
+        selectTab(TvNavTab.NOW_PLAYING)
     }
 
     private fun refreshLogin() {

@@ -20,12 +20,19 @@ diff --git a/connect/src/spirc.rs b/connect/src/spirc.rs
 index d775851..a6aa31b 100644
 --- a/connect/src/spirc.rs
 +++ b/connect/src/spirc.rs
-@@ -814,7 +814,7 @@ impl SpircTask {
+@@ -793,6 +793,7 @@ impl SpircTask {
+             SpircCommand::Transfer(..) | SpircCommand::Activate => {
+                 warn!("SpircCommand::{cmd:?} will be ignored while already active")
+             }
++            SpircCommand::Load(command) => self.handle_load(command, None, None, None).await?,
+             _ if !self.connect_state.is_active() => {
+                 warn!("SpircCommand::{cmd:?} will be ignored while Not Active")
+             }
+@@ -814,7 +815,6 @@ impl SpircTask {
              SpircCommand::RepeatTrack(repeat) => self.handle_repeat_track(repeat),
              SpircCommand::SetPosition(position) => self.handle_seek(position),
              SpircCommand::SetVolume(volume) => self.set_volume(volume),
 -            SpircCommand::Load(command) => self.handle_load(command, None, None).await?,
-+            SpircCommand::Load(command) => self.handle_load(command, None, None, None).await?,
              SpircCommand::AddToQueue(uri) => self.handle_add_to_queue(uri).await,
  
              // Added for Outify
@@ -47,12 +54,16 @@ index d775851..a6aa31b 100644
                  )
                  .await?;
  
-@@ -1473,6 +1477,7 @@ impl SpircTask {
+@@ -1473,6 +1477,11 @@ impl SpircTask {
          cmd: LoadRequest,
          page: Option<ContextPage>,
          fallback_index: Option<usize>,
 +        sorting: Option<&str>,
      ) -> Result<(), Error> {
++        if !self.connect_state.is_active() {
++            self.handle_activate();
++        }
++
          self.connect_state
              .reset_context(if let PlayContext::Uri(ref uri) = cmd.context {
 @@ -1500,6 +1505,9 @@ impl SpircTask {

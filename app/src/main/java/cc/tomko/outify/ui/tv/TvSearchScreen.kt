@@ -106,6 +106,22 @@ fun TvSearchScreen(
     val searchBarFocused by searchBarInteraction.collectIsFocusedAsState()
     val focusManager = LocalFocusManager.current
 
+    val tracks = remember(results) { results.filterIsInstance<SearchUiModel.TrackItem>() }
+    val artists = remember(results) { results.filterIsInstance<SearchUiModel.ArtistItem>() }
+    val albums = remember(results) { results.filterIsInstance<SearchUiModel.AlbumItem>() }
+    val playlists = remember(results) { results.filterIsInstance<SearchUiModel.PlaylistItem>() }
+    val isSearching = remember(results) { results.any { it is SearchUiModel.SkeletonItem } }
+
+    val derivedArtists = remember(artists, tracks) {
+        if (artists.isNotEmpty()) artists.map { it.artist }
+        else tracks.flatMap { it.track.artists }.distinctBy { it.id }
+    }
+
+    val derivedAlbums = remember(albums, tracks) {
+        if (albums.isNotEmpty()) albums.map { it.album }
+        else tracks.mapNotNull { it.track.album }.distinctBy { it.id }
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 32.dp),
@@ -205,7 +221,11 @@ fun TvSearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             contentPadding = PaddingValues(horizontal = 4.dp),
                         ) {
-                            items(row1) { genre ->
+                            items(
+                                items = row1,
+                                key = { it.name },
+                                contentType = { "genre" },
+                            ) { genre ->
                                 TvGenreCard(
                                     name = genre.name,
                                     gradientColors = genre.gradientColors,
@@ -221,7 +241,11 @@ fun TvSearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             contentPadding = PaddingValues(horizontal = 4.dp),
                         ) {
-                            items(row2) { genre ->
+                            items(
+                                items = row2,
+                                key = { it.name },
+                                contentType = { "genre" },
+                            ) { genre ->
                                 TvGenreCard(
                                     name = genre.name,
                                     gradientColors = genre.gradientColors,
@@ -237,12 +261,6 @@ fun TvSearchScreen(
             }
         } else {
             // Results Mode
-            val tracks = results.filterIsInstance<SearchUiModel.TrackItem>()
-            val artists = results.filterIsInstance<SearchUiModel.ArtistItem>()
-            val albums = results.filterIsInstance<SearchUiModel.AlbumItem>()
-            val playlists = results.filterIsInstance<SearchUiModel.PlaylistItem>()
-            val isSearching = results.any { it is SearchUiModel.SkeletonItem }
-
             if (isSearching && tracks.isEmpty() && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty()) {
                 item {
                     TvSkeletonShelf(
@@ -297,7 +315,11 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(tracks) { item ->
+                                items(
+                                    items = tracks,
+                                    key = { it.track.uri },
+                                    contentType = { "track" },
+                                ) { item ->
                                     val isCurrent = currentAudio?.uri == item.track.uri
                                     TvTrackCard(
                                         track = item.track,
@@ -311,12 +333,6 @@ fun TvSearchScreen(
                     }
                 }
 
-                val derivedArtists = if (artists.isNotEmpty()) artists.map { it.artist }
-                    else tracks.flatMap { it.track.artists }.distinctBy { it.id }
-
-                val derivedAlbums = if (albums.isNotEmpty()) albums.map { it.album }
-                    else tracks.mapNotNull { it.track.album }.distinctBy { it.id }
-
                 // 2. Artists Shelf
                 if (derivedArtists.isNotEmpty()) {
                     item {
@@ -327,7 +343,11 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(derivedArtists) { artist ->
+                                items(
+                                    items = derivedArtists,
+                                    key = { it.uri },
+                                    contentType = { "artist" },
+                                ) { artist ->
                                     val imageUrl by produceState<String?>(
                                         initialValue = (artist.getCover(CoverSize.MEDIUM)
                                             ?: artist.covers.firstOrNull())?.let { ALBUM_COVER_URL + it.uri },
@@ -369,7 +389,11 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(derivedAlbums) { album ->
+                                items(
+                                    items = derivedAlbums,
+                                    key = { it.uri },
+                                    contentType = { "album" },
+                                ) { album ->
                                     TvAlbumCard(
                                         album = album,
                                         onClick = { tvViewModel.playUri(album.uri) },
@@ -390,7 +414,11 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(playlists) { item ->
+                                items(
+                                    items = playlists,
+                                    key = { it.playlist.uri },
+                                    contentType = { "playlist" },
+                                ) { item ->
                                     val playlist = item.playlist
                                     val artworkUrl by produceState<String?>(initialValue = null, playlist.uri) {
                                         value = if (playlist.attributes.pictureId.isNotEmpty()) {

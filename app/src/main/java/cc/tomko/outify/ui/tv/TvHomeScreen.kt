@@ -158,7 +158,11 @@ fun TvHomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(state.topArtists) { artist ->
+                                items(
+                                    items = state.topArtists,
+                                    key = { it.uri },
+                                    contentType = { "artist" },
+                                ) { artist ->
                                     TvArtistCard(
                                         name = artist.name,
                                         imageUrl = artist.imageUrl,
@@ -181,7 +185,11 @@ fun TvHomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(state.topTracks) { track ->
+                                items(
+                                    items = state.topTracks,
+                                    key = { it.uri },
+                                    contentType = { "track" },
+                                ) { track ->
                                     val isCurrent = currentAudio?.uri == track.uri
                                     TvTrackCard(
                                         track = track,

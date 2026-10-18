@@ -5,9 +5,17 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import cc.tomko.outify.core.spirc.SpircState
 import cc.tomko.outify.ui.OutifyTheme
 import cc.tomko.outify.ui.viewmodel.TvViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,6 +38,7 @@ class TvActivity : ComponentActivity() {
         setContent {
             val audio by viewModel.currentAudio.collectAsState()
             val isPlaying by viewModel.isPlaying.collectAsState()
+            val spircState by viewModel.spircState.collectAsState()
 
             // No screensaver over the now-playing screen while music plays.
             LaunchedEffect(isPlaying) {
@@ -41,7 +50,20 @@ class TvActivity : ComponentActivity() {
             }
 
             OutifyTheme(audio = audio, darkTheme = true) {
-                TvScreen(viewModel)
+                if (spircState == SpircState.Stopped || spircState == SpircState.Starting) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                } else {
+                    TvScreen(viewModel)
+                }
             }
         }
     }

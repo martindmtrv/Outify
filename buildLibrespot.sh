@@ -7,6 +7,7 @@ REQUIRED_JDK_MAJOR="21"
 declare -A ABI_TRIPLE_MAP=(
     ["arm64-v8a"]="aarch64-linux-android"
     ["armeabi-v7a"]="armv7-linux-androideabi"
+    ["x86"]="i686-linux-android"
 )
 
 PLATFORM_VERSION=21
@@ -116,8 +117,10 @@ export PATH="$TOOLCHAIN:$PATH"
 
 export CC_aarch64_linux_android="$TOOLCHAIN/aarch64-linux-android${PLATFORM_VERSION}-clang"
 export CC_armv7_linux_androideabi="$TOOLCHAIN/armv7a-linux-androideabi${PLATFORM_VERSION}-clang"
+export CC_i686_linux_android="$TOOLCHAIN/i686-linux-android${PLATFORM_VERSION}-clang"
 export AR_aarch64_linux_android="$TOOLCHAIN/llvm-ar"
 export AR_armv7_linux_androideabi="$TOOLCHAIN/llvm-ar"
+export AR_i686_linux_android="$TOOLCHAIN/llvm-ar"
 
 export RUSTFLAGS="\
 	--remap-path-prefix $PROJECT_ROOT=/build/outify \

@@ -43,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -104,7 +105,10 @@ fun TvCard(
             MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
         },
         modifier = modifier
-            .scale(animatedScale)
+            .graphicsLayer {
+                scaleX = animatedScale
+                scaleY = animatedScale
+            }
             .border(
                 width = 3.dp,
                 color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -226,7 +230,7 @@ fun TvTrackCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val artistName = track.artists?.joinToString { it.name }.orEmpty()
+            val artistName = track.artists.joinToString { it.name }
             if (artistName.isNotEmpty()) {
                 Text(
                     text = artistName,

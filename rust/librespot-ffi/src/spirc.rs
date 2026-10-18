@@ -373,7 +373,11 @@ impl SpircRuntime {
             playing_track: options.playing_track,
         };
 
-        let req = LoadRequest::from_context_uri(uri.clone(), modified_options.clone());
+        let req = if uri.starts_with("spotify:track:") || uri.starts_with("spotify:episode:") {
+            LoadRequest::from_tracks(vec![uri.clone()], modified_options.clone())
+        } else {
+            LoadRequest::from_context_uri(uri.clone(), modified_options.clone())
+        };
 
         let context = CurrentContext {
             uri,
@@ -516,7 +520,11 @@ impl SpircRuntime {
             seek_to,
         };
 
-        let req = LoadRequest::from_context_uri(context.uri.to_string(), options);
+        let req = if context.uri.starts_with("spotify:track:") || context.uri.starts_with("spotify:episode:") {
+            LoadRequest::from_tracks(vec![context.uri.to_string()], options)
+        } else {
+            LoadRequest::from_context_uri(context.uri.to_string(), options)
+        };
         if let Err(e) = self.spirc.load(req) {
             error!("resume after reconnect load failed: {e}");
         }
