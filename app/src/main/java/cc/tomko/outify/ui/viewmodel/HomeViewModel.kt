@@ -226,31 +226,23 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                     if (topArtistsJson == null) {
-                        _uiState.value = HomeUiState.NotAuthenticated
-                        loadUserProfile()
-                        return@launch
+                        continue
                     }
                     val topArtistsError =
                         NativeErrorHandler.handleErrorJson(topArtistsJson, "top artists")
                     if (topArtistsError != null) {
-                        _uiState.value = HomeUiState.NotAuthenticated
-                        loadUserProfile()
-                        return@launch
+                        continue
                     }
 
                     val topTracksJson =
                         withContext(Dispatchers.IO) { spClient.getUserTop("tracks", durationValue) }
                     if (topTracksJson == null) {
-                        _uiState.value = HomeUiState.NotAuthenticated
-                        loadUserProfile()
-                        return@launch
+                        continue
                     }
                     val topTracksError =
                         NativeErrorHandler.handleErrorJson(topTracksJson, "top tracks")
                     if (topTracksError != null) {
-                        _uiState.value = HomeUiState.NotAuthenticated
-                        loadUserProfile()
-                        return@launch
+                        continue
                     }
 
                     val topArtists = parseTopArtists(topArtistsJson)

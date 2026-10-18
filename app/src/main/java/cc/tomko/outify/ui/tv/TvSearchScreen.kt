@@ -30,6 +30,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,9 +42,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cc.tomko.outify.ALBUM_COVER_URL
@@ -92,6 +102,7 @@ fun TvSearchScreen(
 
     val searchBarInteraction = remember { MutableInteractionSource() }
     val searchBarFocused by searchBarInteraction.collectIsFocusedAsState()
+    val focusManager = LocalFocusManager.current
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -146,6 +157,12 @@ fun TvSearchScreen(
                         )
                     },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            focusManager.moveFocus(FocusDirection.Down)
+                        }
+                    ),
                     shape = RoundedCornerShape(28.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -157,7 +174,15 @@ fun TvSearchScreen(
                     ),
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
-                        .height(58.dp),
+                        .height(58.dp)
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
+                                focusManager.moveFocus(FocusDirection.Down)
+                                true
+                            } else {
+                                false
+                            }
+                        },
                 )
             }
         }
@@ -284,8 +309,14 @@ fun TvSearchScreen(
                     }
                 }
 
+                val derivedArtists = if (artists.isNotEmpty()) artists.map { it.artist }
+                    else tracks.flatMap { it.track.artists }.distinctBy { it.id }
+
+                val derivedAlbums = if (albums.isNotEmpty()) albums.map { it.album }
+                    else tracks.mapNotNull { it.track.album }.distinctBy { it.id }
+
                 // 2. Artists Shelf
-                if (artists.isNotEmpty()) {
+                if (derivedArtists.isNotEmpty()) {
                     item {
                         TvShelf(
                             title = stringResource(R.string.search_section_artists),
@@ -294,8 +325,7 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(artists) { item ->
-                                    val artist = item.artist
+                                items(derivedArtists) { artist ->
                                     val imageUrl = (artist.getCover(cc.tomko.outify.core.model.CoverSize.MEDIUM)
                                         ?: artist.covers.firstOrNull())?.let { ALBUM_COVER_URL + it.uri }
 
@@ -312,7 +342,7 @@ fun TvSearchScreen(
                 }
 
                 // 3. Albums Shelf
-                if (albums.isNotEmpty()) {
+                if (derivedAlbums.isNotEmpty()) {
                     item {
                         TvShelf(
                             title = stringResource(R.string.search_section_albums),
@@ -321,10 +351,10 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(albums) { item ->
+                                items(derivedAlbums) { album ->
                                     TvAlbumCard(
-                                        album = item.album,
-                                        onClick = { tvViewModel.playUri(item.album.uri) },
+                                        album = album,
+                                        onClick = { tvViewModel.playUri(album.uri) },
                                     )
                                 }
                             }

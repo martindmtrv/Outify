@@ -19,12 +19,16 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -193,20 +197,40 @@ fun TvHomeScreen(
 
                 if (state.topArtists.isEmpty() && state.topTracks.isEmpty()) {
                     item {
-                        TvEmptyHomeCard(
-                            deviceName = deviceName,
-                            onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
-                        )
+                        if (username != null) {
+                            TvConnectedHomeCard(
+                                username = username ?: "",
+                                currentAudio = currentAudio,
+                                isPlaying = isPlaying,
+                                onOpenNowPlaying = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
+                                onSearchClick = { tvViewModel.selectTab(TvNavTab.SEARCH) },
+                            )
+                        } else {
+                            TvEmptyHomeCard(
+                                deviceName = deviceName,
+                                onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
+                            )
+                        }
                     }
                 }
             }
 
             is HomeUiState.NotAuthenticated, is HomeUiState.EmptyResult -> {
                 item {
-                    TvEmptyHomeCard(
-                        deviceName = deviceName,
-                        onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
-                    )
+                    if (username != null) {
+                        TvConnectedHomeCard(
+                            username = username ?: "",
+                            currentAudio = currentAudio,
+                            isPlaying = isPlaying,
+                            onOpenNowPlaying = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
+                            onSearchClick = { tvViewModel.selectTab(TvNavTab.SEARCH) },
+                        )
+                    } else {
+                        TvEmptyHomeCard(
+                            deviceName = deviceName,
+                            onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
+                        )
+                    }
                 }
             }
 
@@ -307,3 +331,114 @@ private fun TvEmptyHomeCard(
         }
     }
 }
+
+@Composable
+private fun TvConnectedHomeCard(
+    username: String,
+    currentAudio: cc.tomko.outify.core.model.PlayableAudio?,
+    isPlaying: Boolean,
+    onOpenNowPlaying: () -> Unit,
+    onSearchClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 20.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(32.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.MusicNote,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(56.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = "Welcome, $username",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Spacer(Modifier.height(8.dp))
+            val artistStr = currentAudio?.artists?.joinToString(", ") { it.name }
+                ?: currentAudio?.showName.orEmpty()
+            Text(
+                text = if (currentAudio != null) {
+                    if (artistStr.isNotEmpty()) "Now playing: ${currentAudio.name} • $artistStr" else "Now playing: ${currentAudio.name}"
+                } else {
+                    "Search for songs, artists, and albums, or play any track from Spotify on your phone."
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(0.75f),
+            )
+            Spacer(Modifier.height(24.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val searchInteraction = remember { MutableInteractionSource() }
+                val searchFocused by searchInteraction.collectIsFocusedAsState()
+
+                Button(
+                    onClick = onSearchClick,
+                    interactionSource = searchInteraction,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (searchFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                        contentColor = if (searchFocused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.onPrimary,
+                    ),
+                    border = BorderStroke(
+                        width = 2.dp,
+                        color = if (searchFocused) MaterialTheme.colorScheme.onBackground else Color.Transparent,
+                    ),
+                ) {
+                    Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Search Music",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+
+                val playerInteraction = remember { MutableInteractionSource() }
+                val playerFocused by playerInteraction.collectIsFocusedAsState()
+
+                OutlinedButton(
+                    onClick = onOpenNowPlaying,
+                    interactionSource = playerInteraction,
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(
+                        width = 2.dp,
+                        color = if (playerFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (playerFocused) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        contentColor = if (playerFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.Tv,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (currentAudio != null) "View Player" else "Spotify Connect",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+

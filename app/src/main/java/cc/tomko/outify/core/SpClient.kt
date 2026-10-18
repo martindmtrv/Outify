@@ -37,12 +37,12 @@ class SpClient @Inject constructor() {
         type: String,
         offset: Int = -1,
         pages: Int = -1
-    ): Array<String>
+    ): Array<String>?
 
     external fun searchContext(
         query: String,
         type: String,
-    ): Array<String>
+    ): Array<String>?
 
     external fun getUserCollection(query: String? = null): String?
 

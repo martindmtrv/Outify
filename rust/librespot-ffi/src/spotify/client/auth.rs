@@ -209,21 +209,60 @@ impl SpotifyClient {
                 if session.is_invalid() || session.username().is_empty() {
                     return None;
                 }
-                let token_provider = session.token_provider();
+
+                // 1. Try token_provider with official Android client ID (valid for Web API)
                 let scopes = "user-read-private,user-read-email,user-top-read,user-library-read,playlist-read-private";
-                match token_provider.get_token(scopes).await {
-                    Ok(tok) => Some(tok),
+                let token_provider = session.token_provider();
+                match token_provider.get_token_with_client_id(scopes, librespot_core::config::ANDROID_CLIENT_ID).await {
+                    Ok(tok) => {
+                        info!("acquired access_token via keymaster (ANDROID_CLIENT_ID with scopes)!");
+                        return Some(tok);
+                    }
                     Err(e) => {
-                        warn!("session token with scopes failed: {e}, falling back without scopes");
-                        match token_provider.get_token("").await {
-                            Ok(tok) => Some(tok),
-                            Err(e2) => {
-                                error!("session token without scopes failed: {e2}");
-                                None
-                            }
-                        }
+                        warn!("keymaster ANDROID_CLIENT_ID with scopes failed: {e}");
                     }
                 }
+
+                // 2. Try token_provider with official Android client ID without scopes
+                match token_provider.get_token_with_client_id("", librespot_core::config::ANDROID_CLIENT_ID).await {
+                    Ok(tok) => {
+                        info!("acquired access_token via keymaster (ANDROID_CLIENT_ID no-scope)!");
+                        return Some(tok);
+                    }
+                    Err(e) => {
+                        warn!("keymaster ANDROID_CLIENT_ID no-scope failed: {e}");
+                    }
+                }
+
+                // 3. Try client_token from spclient (valid for search & public endpoints)
+                match session.spclient().client_token().await {
+                    Ok(client_tok) => {
+                        info!("acquired client_token from spclient!");
+                        return Some(librespot_core::token::Token {
+                            access_token: client_tok,
+                            expires_in: std::time::Duration::from_secs(3600),
+                            token_type: "Bearer".to_string(),
+                            scopes: vec![],
+                            timestamp: std::time::SystemTime::now(),
+                        });
+                    }
+                    Err(e) => {
+                        warn!("client_token fallback failed: {e}");
+                    }
+                }
+
+                // 4. Try login5 auth_token (direct user access token from session)
+                match session.login5().auth_token().await {
+                    Ok(tok) => {
+                        info!("acquired access_token via login5!");
+                        return Some(tok);
+                    }
+                    Err(e) => {
+                        warn!("login5 auth_token failed: {e}");
+                    }
+                }
+
+                None
             })
         }).await;
 
@@ -254,9 +293,31 @@ impl SpotifyClient {
                     if session.is_invalid() || session.username().is_empty() {
                         return None;
                     }
-                    let token_provider = session.token_provider();
+
                     let scopes = "user-read-private,user-read-email,user-top-read,user-library-read,playlist-read-private";
-                    token_provider.get_token(scopes).await.ok()
+                    if let Ok(tok) = session.token_provider().get_token_with_client_id(scopes, librespot_core::config::ANDROID_CLIENT_ID).await {
+                        return Some(tok);
+                    }
+
+                    if let Ok(tok) = session.token_provider().get_token_with_client_id("", librespot_core::config::ANDROID_CLIENT_ID).await {
+                        return Some(tok);
+                    }
+
+                    if let Ok(client_tok) = session.spclient().client_token().await {
+                        return Some(librespot_core::token::Token {
+                            access_token: client_tok,
+                            expires_in: std::time::Duration::from_secs(3600),
+                            token_type: "Bearer".to_string(),
+                            scopes: vec![],
+                            timestamp: std::time::SystemTime::now(),
+                        });
+                    }
+
+                    if let Ok(tok) = session.login5().auth_token().await {
+                        return Some(tok);
+                    }
+
+                    None
                 })
             }).await;
 

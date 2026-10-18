@@ -15,44 +15,65 @@ impl SpotifyClient {
         limit: Option<i32>,
         offset: Option<i32>,
     ) -> Result<Vec<String>, SpotifyApiError> {
-        let token = self.load_token().await?;
-        let token = token
-            .ok_or_else(|| SpotifyApiError::Generic("No account token present!".to_string()))?;
+        let token = match self.load_token().await {
+            Ok(Some(t)) => Some(t),
+            _ => None,
+        };
 
-        let mut params = vec![("q", query.to_string()), ("type", types.to_string())];
+        if let Some(token) = token {
+            let mut params = vec![("q", query.to_string()), ("type", types.to_string())];
 
-        if let Some(l) = limit {
-            params.push(("limit", l.to_string()));
+            if let Some(l) = limit {
+                params.push(("limit", l.to_string()));
+            }
+
+            if let Some(o) = offset {
+                params.push(("offset", o.to_string()));
+            }
+
+            let res_opt = self
+                .client
+                .get(format!("{}/v1/search", SPOTIFY_API_URL))
+                .query(&params)
+                .bearer_auth(token.access_token)
+                .timeout(REQUEST_TIMEOUT)
+                .send()
+                .await;
+
+            if let Ok(res) = res_opt {
+                if res.status().is_success() {
+                    if let Ok(text) = res.text().await {
+                        if let Ok(parsed) = serde_json::from_str::<crate::spotify::search::SearchResponse>(&text) {
+                            let uris = extract_all_uris(parsed);
+                            if !uris.is_empty() {
+                                return Ok(uris);
+                            }
+                        }
+                    }
+                } else {
+                    let status = res.status().as_str().to_string();
+                    let body = res.text().await.unwrap_or_default();
+                    warn!("api.spotify.com search returned {status}: {body}; falling back to spclient context");
+                }
+            }
         }
 
-        if let Some(o) = offset {
-            params.push(("offset", o.to_string()));
+        // Fallback: search via spclient context (requires only active Spotify Connect session)
+        let fallback_uri = format!("spotify:search:{}", query.trim().replace(' ', "+"));
+        if let Ok(ctx) = crate::spclient::get_context(&fallback_uri).await {
+            let uris: Vec<String> = ctx
+                .pages
+                .iter()
+                .flat_map(|page| &page.tracks)
+                .filter_map(|track| track.uri.clone())
+                .collect();
+            if !uris.is_empty() {
+                info!("spotify search recovered via spclient context with {} results!", uris.len());
+                return Ok(uris);
+            }
         }
 
-        let res = self
-            .client
-            .get(format!("{}/v1/search", SPOTIFY_API_URL))
-            .query(&params)
-            .bearer_auth(token.access_token)
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .await?;
-
-        if !res.status().is_success() {
-            let status = res.status().as_str().to_string();
-            let body = res.text().await.unwrap_or_default();
-            return Err(SpotifyApiError::Generic(format!(
-                "search failed with status {status}, query '{query}': {body}"
-            )));
-        }
-
-        let text = res.text().await?;
-
-        let parsed: crate::spotify::search::SearchResponse = serde_json::from_str(&text)?;
-
-        let uris = extract_all_uris(parsed);
-
-        Ok(uris)
+        Ok(Vec::new())
     }
 
     pub async fn get_current_user(&self) -> Result<CurrentUserResponse, SpotifyApiError> {
