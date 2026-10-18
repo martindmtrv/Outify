@@ -61,15 +61,51 @@ impl SpotifyClient {
         // Fallback: search via spclient context (requires only active Spotify Connect session)
         let fallback_uri = format!("spotify:search:{}", query.trim().replace(' ', "+"));
         if let Ok(ctx) = crate::spclient::get_context(&fallback_uri).await {
-            let uris: Vec<String> = ctx
-                .pages
-                .iter()
-                .flat_map(|page| &page.tracks)
-                .filter_map(|track| track.uri.clone())
-                .collect();
-            if !uris.is_empty() {
-                info!("spotify search recovered via spclient context with {} results!", uris.len());
-                return Ok(uris);
+            let mut track_uris = Vec::new();
+            let mut artist_uris = Vec::new();
+            let mut album_uris = Vec::new();
+
+            for page in &ctx.pages {
+                for track in &page.tracks {
+                    if let Some(ref u) = track.uri {
+                        if !track_uris.contains(u) {
+                            track_uris.push(u.clone());
+                        }
+                    }
+                    for (k, v) in &track.metadata {
+                        if (k == "artist_uri" || k.starts_with("artist_uri:")) && v.starts_with("spotify:artist:") {
+                            if !artist_uris.contains(v) {
+                                artist_uris.push(v.clone());
+                            }
+                        }
+                        if (k == "album_uri" || k.starts_with("album_uri:")) && v.starts_with("spotify:album:") {
+                            if !album_uris.contains(v) {
+                                album_uris.push(v.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if types.contains("artist") && !types.contains("track") {
+                if !artist_uris.is_empty() {
+                    info!("spotify search recovered {} artist results via spclient context!", artist_uris.len());
+                    return Ok(artist_uris);
+                }
+                return Ok(Vec::new());
+            }
+
+            if types.contains("album") && !types.contains("track") {
+                if !album_uris.is_empty() {
+                    info!("spotify search recovered {} album results via spclient context!", album_uris.len());
+                    return Ok(album_uris);
+                }
+                return Ok(Vec::new());
+            }
+
+            if !track_uris.is_empty() {
+                info!("spotify search recovered via spclient context with {} results!", track_uris.len());
+                return Ok(track_uris);
             }
         }
 

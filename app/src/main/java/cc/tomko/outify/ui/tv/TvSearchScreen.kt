@@ -55,6 +55,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import cc.tomko.outify.ALBUM_COVER_URL
 import cc.tomko.outify.R
 import cc.tomko.outify.core.model.CoverSize
@@ -326,8 +328,24 @@ fun TvSearchScreen(
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
                                 items(derivedArtists) { artist ->
-                                    val imageUrl = (artist.getCover(cc.tomko.outify.core.model.CoverSize.MEDIUM)
-                                        ?: artist.covers.firstOrNull())?.let { ALBUM_COVER_URL + it.uri }
+                                    val imageUrl by produceState<String?>(
+                                        initialValue = (artist.getCover(CoverSize.MEDIUM)
+                                            ?: artist.covers.firstOrNull())?.let { ALBUM_COVER_URL + it.uri },
+                                        key1 = artist.uri
+                                    ) {
+                                        if (value == null && artist.uri.startsWith("spotify:artist:")) {
+                                            try {
+                                                val fullArtist = withContext(Dispatchers.IO) {
+                                                    searchViewModel.metadata.getArtistMetadata(artist.uri)
+                                                }
+                                                val cover = fullArtist?.getCover(CoverSize.MEDIUM)
+                                                    ?: fullArtist?.covers?.firstOrNull()
+                                                if (cover != null) {
+                                                    value = ALBUM_COVER_URL + cover.uri
+                                                }
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
 
                                     TvArtistCard(
                                         name = artist.name,

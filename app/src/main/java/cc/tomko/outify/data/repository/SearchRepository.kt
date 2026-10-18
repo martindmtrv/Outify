@@ -34,7 +34,19 @@ class SearchRepository @Inject constructor(
     suspend fun searchByType(query: String, type: String): List<SearchResult> =
         withContext(Dispatchers.IO) {
             val uris = spClient.search(query, type) ?: return@withContext emptyList()
+            val expectedPrefix = when (type) {
+                "track" -> "spotify:track:"
+                "artist" -> "spotify:artist:"
+                "album" -> "spotify:album:"
+                "playlist" -> "spotify:playlist:"
+                "show" -> "spotify:show:"
+                "episode" -> "spotify:episode:"
+                else -> null
+            }
             uris.mapNotNull { uri ->
+                if (expectedPrefix != null && !uri.startsWith(expectedPrefix)) {
+                    return@mapNotNull null
+                }
                 val resultType = when {
                     uri.startsWith("spotify:track:") -> SearchResultType.TRACK
                     uri.startsWith("spotify:artist:") -> SearchResultType.ARTIST
