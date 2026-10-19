@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MusicNote
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.text.HtmlCompat
 import androidx.compose.ui.unit.sp
 import cc.tomko.outify.ALBUM_COVER_URL
 import cc.tomko.outify.core.model.Album
@@ -444,11 +446,62 @@ fun TvPlaylistCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = playlist.attributes.description.ifEmpty { "Playlist" },
+                // Descriptions can hold HTML links to other playlists.
+                text = remember(playlist.attributes.description) {
+                    HtmlCompat.fromHtml(playlist.attributes.description, HtmlCompat.FROM_HTML_MODE_COMPACT)
+                        .toString().trim()
+                }.ifEmpty { "Playlist" },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * TV Card for the user's Liked Songs, styled like Spotify's gradient heart tile.
+ */
+@Composable
+fun TvLikedSongsCard(
+    count: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TvCard(
+        onClick = onClick,
+        modifier = modifier.width(160.dp),
+    ) { isFocused ->
+        Column(modifier = Modifier.padding(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(140.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF450AF5), Color(0xFFC4EFD9)))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (isFocused) Icons.Filled.PlayArrow else Icons.Filled.Favorite,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp),
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Liked Songs",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+            )
+            Text(
+                text = "$count songs",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
             )
         }
     }

@@ -155,6 +155,19 @@ class SpClient @Inject constructor() {
     external fun getRootlist(): Array<String>
 
     /**
+     * Contexts the user played recently, as the internal recently-played service's JSON.
+     * Works with a Connect-only login, unlike the Web API.
+     */
+    external fun getRecentlyPlayed(limit: Int = 50): String?
+
+    /**
+     * URIs in a collection set, newest first, as a JSON array, from the internal
+     * collection service: "collection" (liked tracks and saved albums), "artist", "show".
+     * Works with a Connect-only login, unlike [getSavedItems].
+     */
+    external fun getCollectionUris(set: String): String?
+
+    /**
      * Returns JSON of `total` and `mediaItems` - containing object of `uri` holding URI to the radio playlist
      */
     external fun getRadioForTrack(trackUri: String): String?

@@ -844,6 +844,88 @@ pub extern "system" fn Java_cc_tomko_outify_core_SpClient_getRootlist(
     array.into_raw()
 }
 
+/// Recently played contexts as the internal service's JSON, or null on failure.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cc_tomko_outify_core_SpClient_getRecentlyPlayed(
+    env: JNIEnv,
+    _class: JClass,
+    limit: jint,
+) -> jstring {
+    let rt = crate::network_rt();
+
+    let bytes = match rt.block_on(crate::spclient::get_recently_played(limit.max(1) as u32)) {
+        Ok(b) => b,
+        Err(e) => {
+            error!("get_recently_played failed: {e}");
+            return std::ptr::null_mut();
+        }
+    };
+
+    match env.new_string(String::from_utf8_lossy(&bytes)) {
+        Ok(jstr) => jstr.into_raw(),
+        Err(e) => {
+            error!("jni new_string failed for recently played: {e:?}");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// URIs in a collection set, newest first, as a JSON array, or null on failure.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cc_tomko_outify_core_SpClient_getCollectionUris(
+    mut env: JNIEnv,
+    _class: JClass,
+    set: JString,
+) -> jstring {
+    let set: String = match env.get_string(&set) {
+        Ok(js) => js.into(),
+        Err(e) => {
+            error!("jni get_string failed for collection set: {e}");
+            return std::ptr::null_mut();
+        }
+    };
+
+    let rt = crate::network_rt();
+    let items = rt.block_on(async {
+        let mut items = Vec::new();
+        let mut token = String::new();
+        loop {
+            let page = crate::spclient::get_collection_page(&set, &token, 300).await?;
+            items.extend(page.items.into_iter().filter(|item| !item.is_removed));
+            if page.next_page_token.is_empty() || page.next_page_token == token {
+                break;
+            }
+            token = page.next_page_token;
+        }
+        Ok::<_, librespot_core::Error>(items)
+    });
+
+    let mut items = match items {
+        Ok(items) => items,
+        Err(e) => {
+            error!("get_collection_page for {set} failed: {e}");
+            return std::ptr::null_mut();
+        }
+    };
+    items.sort_by(|a, b| b.added_at.cmp(&a.added_at));
+    let uris: Vec<&str> = items.iter().map(|item| item.uri.as_str()).collect();
+
+    let json = match serde_json::to_string(&uris) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("serde for collection uris failed: {e}");
+            return std::ptr::null_mut();
+        }
+    };
+    match env.new_string(json) {
+        Ok(jstr) => jstr.into_raw(),
+        Err(e) => {
+            error!("jni new_string failed for collection uris: {e:?}");
+            std::ptr::null_mut()
+        }
+    }
+}
+
 #[unsafe(export_name = "Java_cc_tomko_outify_core_SpClient_getRadioForTrack")]
 pub extern "system" fn get_radio_for_track(
     mut env: JNIEnv,

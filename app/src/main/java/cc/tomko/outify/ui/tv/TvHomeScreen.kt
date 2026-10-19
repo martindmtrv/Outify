@@ -16,12 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Button
@@ -35,248 +34,142 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import cc.tomko.outify.R
-import cc.tomko.outify.core.model.toPlayableAudio
-import cc.tomko.outify.ui.viewmodel.HomeUiState
-import cc.tomko.outify.ui.viewmodel.HomeViewModel
-import cc.tomko.outify.ui.viewmodel.TopItemsDuration
+import cc.tomko.outify.ui.viewmodel.TvHomeCard
+import cc.tomko.outify.ui.viewmodel.TvHomeViewModel
 import cc.tomko.outify.ui.viewmodel.TvViewModel
 
 /**
- * Android TV Home screen displaying top artists, top tracks, and recommendations
- * with a 10-foot D-pad remote-optimized UI.
+ * Android TV Home: recently played, your playlists (with Liked Songs) and saved albums,
+ * all from Spotify's internal services so a Connect login is enough.
  */
 @Composable
 fun TvHomeScreen(
     tvViewModel: TvViewModel,
-    homeViewModel: HomeViewModel,
+    homeViewModel: TvHomeViewModel,
     modifier: Modifier = Modifier,
 ) {
     val uiState by homeViewModel.uiState.collectAsState()
     val username by homeViewModel.username.collectAsState(initial = null)
-    val selectedDuration by homeViewModel.selectedDuration.collectAsState()
     val currentAudio by tvViewModel.currentAudio.collectAsState()
     val isPlaying by tvViewModel.isPlaying.collectAsState()
     val deviceName by tvViewModel.deviceName.collectAsState()
 
     // Without an initially focused element the first OK press on the remote does nothing.
-    val selectedChipFocus = remember { FocusRequester() }
+    val firstFocus = remember { FocusRequester() }
+    var focusedOnce by remember { mutableStateOf(false) }
+
+    val shelves = listOf(
+        "Recently played" to uiState.recentlyPlayed,
+        "Your playlists" to uiState.playlists?.takeIf { uiState.likedSongsCount != null },
+        "Saved albums" to uiState.savedAlbums,
+    )
+    val likedSongsCount = uiState.likedSongsCount ?: 0
+    fun hasCards(title: String, cards: List<TvHomeCard>?) =
+        cards != null && (cards.isNotEmpty() || (title == "Your playlists" && likedSongsCount > 0))
+    // The first card on screen takes the initial focus, whichever shelf loads first.
+    val focusShelf = shelves.firstOrNull { (title, cards) -> hasCards(title, cards) }?.first
 
     LaunchedEffect(Unit) {
-        homeViewModel.refreshPlaybackLoginState()
-        homeViewModel.loadData()
+        homeViewModel.refresh()
     }
-    LaunchedEffect(Unit) {
-        selectedChipFocus.requestFocus()
+    LaunchedEffect(focusShelf != null || uiState.isEmpty) {
+        if ((focusShelf == null && !uiState.isEmpty) || focusedOnce) return@LaunchedEffect
+        // Lazy rows compose their items during layout, after this effect first runs.
+        repeat(10) {
+            withFrameNanos { }
+            if (runCatching { firstFocus.requestFocus() }.isSuccess) {
+                focusedOnce = true
+                return@LaunchedEffect
+            }
+        }
     }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 32.dp),
     ) {
-        // Top Header
         item {
-            Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                Text(
-                    text = if (username != null) "Welcome back, $username" else "Home",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
+            Text(
+                text = if (username != null) "Welcome back, $username" else "Home",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(bottom = 16.dp),
+            )
+        }
 
-                Spacer(Modifier.height(14.dp))
-
-                // Time Duration Filter Chips (Last 4 weeks, Last 6 months, Last year)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TopItemsDuration.entries.forEach { duration ->
-                        val isSelected = selectedDuration == duration
-                        val interactionSource = remember { MutableInteractionSource() }
-                        val isFocused by interactionSource.collectIsFocusedAsState()
-
-                        Surface(
-                            onClick = { homeViewModel.setDuration(duration) },
-                            interactionSource = interactionSource,
-                            shape = RoundedCornerShape(20.dp),
-                            color = when {
-                                isFocused -> MaterialTheme.colorScheme.primary
-                                isSelected -> MaterialTheme.colorScheme.primaryContainer
-                                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                            },
-                            border = BorderStroke(
-                                width = 2.dp,
-                                color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else Color.Transparent,
-                            ),
-                            modifier = Modifier
-                                .padding(vertical = 2.dp)
-                                .then(if (isSelected) Modifier.focusRequester(selectedChipFocus) else Modifier),
-                        ) {
-                            Text(
-                                text = duration.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Normal,
-                                color = when {
-                                    isFocused -> MaterialTheme.colorScheme.onPrimary
-                                    isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                        }
-                    }
+        if (uiState.isEmpty) {
+            item {
+                if (username != null) {
+                    TvConnectedHomeCard(
+                        username = username ?: "",
+                        currentAudio = currentAudio,
+                        isPlaying = isPlaying,
+                        onOpenNowPlaying = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
+                        onSearchClick = { tvViewModel.selectTab(TvNavTab.SEARCH) },
+                        primaryFocus = firstFocus,
+                    )
+                } else {
+                    TvEmptyHomeCard(
+                        deviceName = deviceName,
+                        onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
+                        primaryFocus = firstFocus,
+                    )
                 }
             }
         }
 
-        // Content Area according to HomeUiState
-        when (val state = uiState) {
-            is HomeUiState.Loading -> {
-                item {
-                    TvSkeletonShelf(
-                        title = stringResource(R.string.homescreen_top_artists),
-                        isCircle = true,
-                    )
+        shelves.forEach { (title, cards) ->
+            when {
+                cards == null -> item(key = title) {
+                    TvSkeletonShelf(title = title, isCircle = false)
                 }
-                item {
-                    TvSkeletonShelf(
-                        title = stringResource(R.string.homescreen_top_tracks),
-                        isCircle = false,
-                    )
-                }
-            }
 
-            is HomeUiState.Success -> {
-                // Top Artists Shelf
-                if (state.topArtists.isNotEmpty()) {
-                    item {
-                        TvShelf(
-                            title = stringResource(R.string.homescreen_top_artists),
+                hasCards(title, cards) -> item(key = title) {
+                    TvShelf(title = title) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
                         ) {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp),
-                            ) {
-                                items(
-                                    items = state.topArtists,
-                                    key = { it.uri },
-                                    contentType = { "artist" },
-                                ) { artist ->
-                                    TvArtistCard(
-                                        name = artist.name,
-                                        imageUrl = artist.imageUrl,
-                                        subtitle = "#${artist.rank} Artist",
-                                        onClick = { tvViewModel.playUri(artist.uri) },
+                            val withLikedSongs = title == "Your playlists" && likedSongsCount > 0
+                            val takesFocus = title == focusShelf
+                            if (withLikedSongs) {
+                                item(key = "liked-songs", contentType = "liked") {
+                                    TvLikedSongsCard(
+                                        count = likedSongsCount,
+                                        onClick = { tvViewModel.playLikedSongs() },
+                                        modifier = if (takesFocus) Modifier.focusRequester(firstFocus) else Modifier,
                                     )
                                 }
                             }
-                        }
-                    }
-                }
-
-                // Top Tracks Shelf
-                if (state.topTracks.isNotEmpty()) {
-                    item {
-                        TvShelf(
-                            title = stringResource(R.string.homescreen_top_tracks),
-                        ) {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp),
-                            ) {
-                                items(
-                                    items = state.topTracks,
-                                    key = { it.uri },
-                                    contentType = { "track" },
-                                ) { track ->
-                                    val isCurrent = currentAudio?.uri == track.uri
-                                    TvTrackCard(
-                                        track = track,
-                                        isCurrentAudio = isCurrent,
-                                        isPlaying = isPlaying,
-                                        onClick = { tvViewModel.playTrack(track.toPlayableAudio()) },
-                                    )
+                            itemsIndexed(
+                                items = cards,
+                                key = { _, card -> card.uri },
+                                contentType = { _, card -> card::class },
+                            ) { index, card ->
+                                val cardModifier = if (takesFocus && index == 0 && !withLikedSongs) {
+                                    Modifier.focusRequester(firstFocus)
+                                } else {
+                                    Modifier
                                 }
+                                TvHomeCardItem(
+                                    card = card,
+                                    onClick = { tvViewModel.playUri(card.uri) },
+                                    modifier = cardModifier,
+                                )
                             }
-                        }
-                    }
-                }
-
-                if (state.topArtists.isEmpty() && state.topTracks.isEmpty()) {
-                    item {
-                        if (username != null) {
-                            TvConnectedHomeCard(
-                                username = username ?: "",
-                                currentAudio = currentAudio,
-                                isPlaying = isPlaying,
-                                onOpenNowPlaying = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
-                                onSearchClick = { tvViewModel.selectTab(TvNavTab.SEARCH) },
-                            )
-                        } else {
-                            TvEmptyHomeCard(
-                                deviceName = deviceName,
-                                onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            is HomeUiState.NotAuthenticated, is HomeUiState.EmptyResult -> {
-                item {
-                    if (username != null) {
-                        TvConnectedHomeCard(
-                            username = username ?: "",
-                            currentAudio = currentAudio,
-                            isPlaying = isPlaying,
-                            onOpenNowPlaying = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
-                            onSearchClick = { tvViewModel.selectTab(TvNavTab.SEARCH) },
-                        )
-                    } else {
-                        TvEmptyHomeCard(
-                            deviceName = deviceName,
-                            onConnectClick = { tvViewModel.selectTab(TvNavTab.NOW_PLAYING) },
-                        )
-                    }
-                }
-            }
-
-            is HomeUiState.Error -> {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = state.message,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = { homeViewModel.loadData() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.common_retry))
                         }
                     }
                 }
@@ -286,9 +179,29 @@ fun TvHomeScreen(
 }
 
 @Composable
+private fun TvHomeCardItem(card: TvHomeCard, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    when (card) {
+        is TvHomeCard.PlaylistCard -> TvPlaylistCard(
+            playlist = card.playlist,
+            artworkUrl = card.artworkUrl,
+            onClick = onClick,
+            modifier = modifier,
+        )
+        is TvHomeCard.AlbumCard -> TvAlbumCard(album = card.album, onClick = onClick, modifier = modifier)
+        is TvHomeCard.ArtistCard -> TvArtistCard(
+            name = card.name,
+            imageUrl = card.imageUrl,
+            onClick = onClick,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
 private fun TvEmptyHomeCard(
     deviceName: String,
     onConnectClick: () -> Unit,
+    primaryFocus: FocusRequester,
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -316,7 +229,7 @@ private fun TvEmptyHomeCard(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Open the Spotify app on your phone, tablet, or computer and select “$deviceName” to sync your listening history, top artists, and tracks here.",
+                text = "Open the Spotify app on your phone, tablet, or computer and select “$deviceName” to bring your playlists, saved albums and listening history here.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -330,6 +243,7 @@ private fun TvEmptyHomeCard(
             Button(
                 onClick = onConnectClick,
                 interactionSource = interactionSource,
+                modifier = Modifier.focusRequester(primaryFocus),
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
@@ -357,6 +271,7 @@ private fun TvConnectedHomeCard(
     isPlaying: Boolean,
     onOpenNowPlaying: () -> Unit,
     onSearchClick: () -> Unit,
+    primaryFocus: FocusRequester,
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -408,6 +323,7 @@ private fun TvConnectedHomeCard(
                 Button(
                     onClick = onSearchClick,
                     interactionSource = searchInteraction,
+                    modifier = Modifier.focusRequester(primaryFocus),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (searchFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,

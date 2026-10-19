@@ -59,15 +59,15 @@ import cc.tomko.outify.core.model.PlayableAudio
 import cc.tomko.outify.core.model.getCover
 import cc.tomko.outify.core.spirc.SpircState
 import cc.tomko.outify.playback.model.RepeatMode
-import cc.tomko.outify.ui.viewmodel.HomeViewModel
 import cc.tomko.outify.ui.viewmodel.SearchViewModel
+import cc.tomko.outify.ui.viewmodel.TvHomeViewModel
 import cc.tomko.outify.ui.viewmodel.TvViewModel
 import coil3.compose.AsyncImage
 
 @Composable
 fun TvScreen(
     viewModel: TvViewModel,
-    homeViewModel: HomeViewModel = hiltViewModel(),
+    homeViewModel: TvHomeViewModel = hiltViewModel(),
     searchViewModel: SearchViewModel = hiltViewModel(),
 ) {
     val selectedTab by viewModel.selectedTab.collectAsState()

@@ -205,6 +205,12 @@ class TvViewModel @Inject constructor(
         selectTab(TvNavTab.NOW_PLAYING)
     }
 
+    fun playLikedSongs() {
+        spirc.activate()
+        spirc.load(OutifyUri.Liked, null)
+        selectTab(TvNavTab.NOW_PLAYING)
+    }
+
     private fun refreshLogin() {
         viewModelScope.launch {
             _isLoggedIn.value = withContext(Dispatchers.IO) { authManager.hasCachedCredentials() }
