@@ -46,6 +46,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import cc.tomko.outify.ALBUM_COVER_URL
+import cc.tomko.outify.core.model.CoverSize
+import cc.tomko.outify.core.model.OutifyUri
+import cc.tomko.outify.core.model.getCover
 import cc.tomko.outify.ui.viewmodel.TvHomeCard
 import cc.tomko.outify.ui.viewmodel.TvHomeViewModel
 import cc.tomko.outify.ui.viewmodel.TvViewModel
@@ -150,6 +154,17 @@ fun TvHomeScreen(
                                     TvLikedSongsCard(
                                         count = likedSongsCount,
                                         onClick = { tvViewModel.playLikedSongs() },
+                                        onLongClick = {
+                                            tvViewModel.openContextMenu(
+                                                TvContextMenuData(
+                                                    title = "Liked Songs",
+                                                    subtitle = "$likedSongsCount songs",
+                                                    imageUrl = null,
+                                                    onPlay = { tvViewModel.playLikedSongs() },
+                                                    onAddToQueue = { tvViewModel.addToQueue(OutifyUri.Liked.toUriString()) },
+                                                )
+                                            )
+                                        },
                                         modifier = if (takesFocus) Modifier.focusRequester(firstFocus) else Modifier,
                                     )
                                 }
@@ -166,6 +181,7 @@ fun TvHomeScreen(
                                 }
                                 TvHomeCardItem(
                                     card = card,
+                                    tvViewModel = tvViewModel,
                                     onClick = { tvViewModel.playUri(card.uri) },
                                     modifier = cardModifier,
                                 )
@@ -179,19 +195,68 @@ fun TvHomeScreen(
 }
 
 @Composable
-private fun TvHomeCardItem(card: TvHomeCard, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun TvHomeCardItem(
+    card: TvHomeCard,
+    tvViewModel: TvViewModel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     when (card) {
         is TvHomeCard.PlaylistCard -> TvPlaylistCard(
             playlist = card.playlist,
             artworkUrl = card.artworkUrl,
             onClick = onClick,
+            onLongClick = {
+                tvViewModel.openContextMenu(
+                    TvContextMenuData(
+                        title = card.playlist.attributes.name,
+                        subtitle = "Playlist",
+                        imageUrl = card.artworkUrl,
+                        onPlay = onClick,
+                        onPlayNext = { tvViewModel.playNext(card.uri) },
+                        onAddToQueue = { tvViewModel.addToQueue(card.uri) },
+                    )
+                )
+            },
             modifier = modifier,
         )
-        is TvHomeCard.AlbumCard -> TvAlbumCard(album = card.album, onClick = onClick, modifier = modifier)
+        is TvHomeCard.AlbumCard -> {
+            val albumCover = (card.album.getCover(CoverSize.MEDIUM) ?: card.album.covers.firstOrNull())
+                ?.let { ALBUM_COVER_URL + it.uri }
+            TvAlbumCard(
+                album = card.album,
+                onClick = onClick,
+                onLongClick = {
+                    tvViewModel.openContextMenu(
+                        TvContextMenuData(
+                            title = card.album.name,
+                            subtitle = card.album.artists.joinToString { it.name }.ifEmpty { "Album" },
+                            imageUrl = albumCover,
+                            onPlay = onClick,
+                            onPlayNext = { tvViewModel.playNext(card.uri) },
+                            onAddToQueue = { tvViewModel.addToQueue(card.uri) },
+                        )
+                    )
+                },
+                modifier = modifier,
+            )
+        }
         is TvHomeCard.ArtistCard -> TvArtistCard(
             name = card.name,
             imageUrl = card.imageUrl,
             onClick = onClick,
+            onLongClick = {
+                tvViewModel.openContextMenu(
+                    TvContextMenuData(
+                        title = card.name,
+                        subtitle = "Artist",
+                        imageUrl = card.imageUrl,
+                        onPlay = onClick,
+                        onPlayNext = { tvViewModel.playNext(card.uri) },
+                        onAddToQueue = { tvViewModel.addToQueue(card.uri) },
+                    )
+                )
+            },
             modifier = modifier,
         )
     }

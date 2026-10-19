@@ -5,6 +5,11 @@ import android.net.wifi.WifiManager
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Queue
+import androidx.compose.material3.Icon
+import cc.tomko.outify.R
 import cc.tomko.outify.core.AuthManager
 import cc.tomko.outify.core.AuthStateEventBus
 import cc.tomko.outify.core.Discovery
@@ -18,6 +23,8 @@ import cc.tomko.outify.core.spirc.SpircWrapper
 import cc.tomko.outify.data.repository.SettingsRepository
 import cc.tomko.outify.playback.PlaybackStateHolder
 import cc.tomko.outify.playback.model.RepeatMode
+import cc.tomko.outify.ui.notifications.InAppNotificationController
+import cc.tomko.outify.ui.tv.TvContextMenuData
 import cc.tomko.outify.ui.tv.TvNavTab
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -54,6 +61,17 @@ class TvViewModel @Inject constructor(
 ) : ViewModel() {
     private val _selectedTab = MutableStateFlow(TvNavTab.HOME)
     val selectedTab: StateFlow<TvNavTab> = _selectedTab.asStateFlow()
+
+    private val _contextMenu = MutableStateFlow<TvContextMenuData?>(null)
+    val contextMenu: StateFlow<TvContextMenuData?> = _contextMenu.asStateFlow()
+
+    fun openContextMenu(data: TvContextMenuData) {
+        _contextMenu.value = data
+    }
+
+    fun dismissContextMenu() {
+        _contextMenu.value = null
+    }
 
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
@@ -209,6 +227,34 @@ class TvViewModel @Inject constructor(
         spirc.activate()
         spirc.load(OutifyUri.Liked, null)
         selectTab(TvNavTab.NOW_PLAYING)
+    }
+
+    fun addToQueue(uri: String) {
+        spirc.addToQueue(uri)
+        val message = context.getString(R.string.toast_added_to_queue)
+        InAppNotificationController.show(
+            message,
+            { Icon(Icons.Filled.Queue, contentDescription = message) },
+            1500L
+        )
+    }
+
+    fun playNext(uri: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            spirc.playNext(uri)
+        }
+        val message = context.getString(R.string.toast_inserted_to_queue)
+        InAppNotificationController.show(
+            message,
+            { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = message) },
+            1500L
+        )
+    }
+
+    fun seekTo(positionMs: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            spirc.seekTo(positionMs)
+        }
     }
 
     private fun refreshLogin() {

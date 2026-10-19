@@ -381,6 +381,27 @@ class QueueViewModel @Inject constructor(
         viewModelScope.launch { syncQueueToSpirc() }
     }
 
+    fun playQueueTrack(entry: QueueEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                spirc.activate()
+                val nextUris = if (allNextUris.isNotEmpty()) allNextUris else loadNextUris()
+                val targetIndex = nextUris.indexOfFirst { it.uri == entry.audio.uri }
+                val remainingUris = if (targetIndex >= 0) {
+                    nextUris.drop(targetIndex + 1).map { it.uri }.toTypedArray()
+                } else {
+                    emptyArray()
+                }
+                spirc.setQueue(remainingUris, entry.audio.uri)
+                spirc.playerPlay()
+                playbackStateHolder.setAudio(entry.audio)
+                loadQueue(entry.audio)
+            } catch (e: Exception) {
+                _queueState.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
     fun debouncedSaveToRepository(entries: List<QueueEntry>) {
         viewModelScope.launch {
             val queue = SavedQueue(

@@ -374,11 +374,25 @@ fun TvSearchScreen(
                                     contentType = { _, _ -> "track" },
                                 ) { index, item ->
                                     val isCurrent = currentAudio?.uri == item.track.uri
+                                    val coverUrl = (item.track.album?.getCover(CoverSize.MEDIUM)
+                                        ?: item.track.album?.covers?.firstOrNull())?.let { ALBUM_COVER_URL + it.uri }
                                     TvTrackCard(
                                         track = item.track,
                                         isCurrentAudio = isCurrent,
                                         isPlaying = isPlaying,
                                         onClick = { tvViewModel.playTrack(item.track.toPlayableAudio()) },
+                                        onLongClick = {
+                                            tvViewModel.openContextMenu(
+                                                TvContextMenuData(
+                                                    title = item.track.name,
+                                                    subtitle = item.track.artists.joinToString { it.name },
+                                                    imageUrl = coverUrl,
+                                                    onPlay = { tvViewModel.playTrack(item.track.toPlayableAudio()) },
+                                                    onPlayNext = { tvViewModel.playNext(item.track.uri) },
+                                                    onAddToQueue = { tvViewModel.addToQueue(item.track.uri) },
+                                                )
+                                            )
+                                        },
                                         modifier = firstCard(Shelf.TRACKS, index),
                                     )
                                 }
@@ -426,6 +440,18 @@ fun TvSearchScreen(
                                         imageUrl = imageUrl,
                                         subtitle = "Artist",
                                         onClick = { tvViewModel.playUri(artist.uri) },
+                                        onLongClick = {
+                                            tvViewModel.openContextMenu(
+                                                TvContextMenuData(
+                                                    title = artist.name,
+                                                    subtitle = "Artist",
+                                                    imageUrl = imageUrl,
+                                                    onPlay = { tvViewModel.playUri(artist.uri) },
+                                                    onPlayNext = { tvViewModel.playNext(artist.uri) },
+                                                    onAddToQueue = { tvViewModel.addToQueue(artist.uri) },
+                                                )
+                                            )
+                                        },
                                         modifier = firstCard(Shelf.ARTISTS, index),
                                     )
                                 }
@@ -449,9 +475,23 @@ fun TvSearchScreen(
                                     key = { _, album -> album.uri },
                                     contentType = { _, _ -> "album" },
                                 ) { index, album ->
+                                    val albumCover = (album.getCover(CoverSize.MEDIUM)
+                                        ?: album.covers.firstOrNull())?.let { ALBUM_COVER_URL + it.uri }
                                     TvAlbumCard(
                                         album = album,
                                         onClick = { tvViewModel.playUri(album.uri) },
+                                        onLongClick = {
+                                            tvViewModel.openContextMenu(
+                                                TvContextMenuData(
+                                                    title = album.name,
+                                                    subtitle = album.artists.joinToString { it.name }.ifEmpty { "Album" },
+                                                    imageUrl = albumCover,
+                                                    onPlay = { tvViewModel.playUri(album.uri) },
+                                                    onPlayNext = { tvViewModel.playNext(album.uri) },
+                                                    onAddToQueue = { tvViewModel.addToQueue(album.uri) },
+                                                )
+                                            )
+                                        },
                                         modifier = firstCard(Shelf.ALBUMS, index),
                                     )
                                 }
@@ -488,6 +528,18 @@ fun TvSearchScreen(
                                         playlist = playlist,
                                         artworkUrl = artworkUrl,
                                         onClick = { tvViewModel.playUri(playlist.uri) },
+                                        onLongClick = {
+                                            tvViewModel.openContextMenu(
+                                                TvContextMenuData(
+                                                    title = playlist.attributes.name,
+                                                    subtitle = "Playlist",
+                                                    imageUrl = artworkUrl,
+                                                    onPlay = { tvViewModel.playUri(playlist.uri) },
+                                                    onPlayNext = { tvViewModel.playNext(playlist.uri) },
+                                                    onAddToQueue = { tvViewModel.addToQueue(playlist.uri) },
+                                                )
+                                            )
+                                        },
                                         modifier = firstCard(Shelf.PLAYLISTS, index),
                                     )
                                 }

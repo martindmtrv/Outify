@@ -424,6 +424,7 @@
     <string name="toast_login_failed">Login failed</string>
     <string name="toast_added_to_queue">Added to queue</string>
     <string name="toast_inserted_to_queue">Inserted to queue</string>
+    <string name="toast_removed_from_queue">Removed from queue</string>
     <string name="toast_radio_started">Radio started</string>
     <string name="bitrate_very_high">Very high</string>
     <string name="bitrate_high">High</string>

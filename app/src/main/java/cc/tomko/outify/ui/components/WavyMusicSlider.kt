@@ -185,7 +185,7 @@ fun WavyMusicSlider(
 
         Slider(
             value = clampedValue,
-            onValueChange = { newValue ->
+            onValueChange = { newValue: Float ->
                 val normalizedNew = if (valueRange.endInclusive == valueRange.start) {
                     0f
                 } else {
@@ -232,7 +232,14 @@ fun WavyMusicSlider(
             colors = SliderDefaults.colors(
                 thumbColor = Color.Transparent,
                 activeTrackColor = Color.Transparent,
-                inactiveTrackColor = Color.Transparent
+                inactiveTrackColor = Color.Transparent,
+                disabledThumbColor = Color.Transparent,
+                disabledActiveTrackColor = Color.Transparent,
+                disabledInactiveTrackColor = Color.Transparent,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent,
+                disabledActiveTickColor = Color.Transparent,
+                disabledInactiveTickColor = Color.Transparent,
             )
         )
 
