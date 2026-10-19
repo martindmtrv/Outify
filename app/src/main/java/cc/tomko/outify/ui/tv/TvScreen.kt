@@ -215,8 +215,9 @@ private fun NowPlaying(viewModel: TvViewModel, audio: PlayableAudio) {
             model = cover,
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            // Leaves the controls row its full width beside the 108dp rail on a 960dp-wide (1080p) TV.
             modifier = Modifier
-                .size(360.dp)
+                .size(320.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
@@ -254,7 +255,7 @@ private fun NowPlaying(viewModel: TvViewModel, audio: PlayableAudio) {
             Spacer(Modifier.height(32.dp))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TvToggleButton(

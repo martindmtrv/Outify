@@ -234,7 +234,19 @@ impl SpotifyClient {
                     }
                 }
 
-                // 3. Try client_token from spclient (valid for search & public endpoints)
+                // 3. Try login5 auth_token (a user access token the Web API accepts)
+                match session.login5().auth_token().await {
+                    Ok(tok) => {
+                        info!("acquired access_token via login5!");
+                        return Some(tok);
+                    }
+                    Err(e) => {
+                        warn!("login5 auth_token failed: {e}");
+                    }
+                }
+
+                // 4. Try client_token from spclient. Not a user token: the Web API
+                // rejects it with 401, so it is only good for spclient search.
                 match session.spclient().client_token().await {
                     Ok(client_tok) => {
                         info!("acquired client_token from spclient!");
@@ -248,17 +260,6 @@ impl SpotifyClient {
                     }
                     Err(e) => {
                         warn!("client_token fallback failed: {e}");
-                    }
-                }
-
-                // 4. Try login5 auth_token (direct user access token from session)
-                match session.login5().auth_token().await {
-                    Ok(tok) => {
-                        info!("acquired access_token via login5!");
-                        return Some(tok);
-                    }
-                    Err(e) => {
-                        warn!("login5 auth_token failed: {e}");
                     }
                 }
 
@@ -303,6 +304,10 @@ impl SpotifyClient {
                         return Some(tok);
                     }
 
+                    if let Ok(tok) = session.login5().auth_token().await {
+                        return Some(tok);
+                    }
+
                     if let Ok(client_tok) = session.spclient().client_token().await {
                         return Some(librespot_core::token::Token {
                             access_token: client_tok,
@@ -311,10 +316,6 @@ impl SpotifyClient {
                             scopes: vec![],
                             timestamp: std::time::SystemTime::now(),
                         });
-                    }
-
-                    if let Ok(tok) = session.login5().auth_token().await {
-                        return Some(tok);
                     }
 
                     None

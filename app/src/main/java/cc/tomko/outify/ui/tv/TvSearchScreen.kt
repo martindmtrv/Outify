@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -33,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +45,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -50,6 +55,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -70,6 +76,9 @@ private data class GenreCategory(
     val name: String,
     val gradientColors: List<Color>,
 )
+
+/** The result shelves, top to bottom, for picking which one D-pad Down enters. */
+private enum class Shelf { GENRES, TRACKS, ARTISTS, ALBUMS, PLAYLISTS }
 
 private val BROWSE_GENRES = listOf(
     GenreCategory("Pop", listOf(Color(0xFFE13300), Color(0xFF8C1932))),
@@ -105,6 +114,13 @@ fun TvSearchScreen(
     val searchBarInteraction = remember { MutableInteractionSource() }
     val searchBarFocused by searchBarInteraction.collectIsFocusedAsState()
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val searchBarFocus = remember { FocusRequester() }
+    // The keyboard opening as soon as the bar is focused swallows the next OK press as a
+    // key press (typing its first key), so the bar stays read-only, with no input session
+    // to open it, until OK is pressed on it.
+    var editing by remember { mutableStateOf(false) }
+    val firstResultFocus = remember { FocusRequester() }
 
     val tracks = remember(results) { results.filterIsInstance<SearchUiModel.TrackItem>() }
     val artists = remember(results) { results.filterIsInstance<SearchUiModel.ArtistItem>() }
@@ -120,6 +136,32 @@ fun TvSearchScreen(
     val derivedAlbums = remember(albums, tracks) {
         if (albums.isNotEmpty()) albums.map { it.album }
         else tracks.mapNotNull { it.track.album }.distinctBy { it.id }
+    }
+
+    // D-pad Down from the search bar lands on the nearest card by position, which is
+    // the second one under the centred bar, so route it to the top shelf's first card.
+    val firstShelf = when {
+        query.isBlank() -> Shelf.GENRES
+        tracks.isNotEmpty() -> Shelf.TRACKS
+        derivedArtists.isNotEmpty() -> Shelf.ARTISTS
+        derivedAlbums.isNotEmpty() -> Shelf.ALBUMS
+        playlists.isNotEmpty() -> Shelf.PLAYLISTS
+        else -> null
+    }
+    fun firstCard(shelf: Shelf, index: Int): Modifier =
+        if (shelf == firstShelf && index == 0) Modifier.focusRequester(firstResultFocus) else Modifier
+    fun focusFirstResult() {
+        // Throws when the first card is not composed, e.g. its row was scrolled away.
+        if (runCatching { firstResultFocus.requestFocus() }.isFailure) {
+            focusManager.moveFocus(FocusDirection.Down)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        searchBarFocus.requestFocus()
+    }
+    LaunchedEffect(editing) {
+        if (editing) keyboardController?.show()
     }
 
     LazyColumn(
@@ -175,10 +217,12 @@ fun TvSearchScreen(
                         )
                     },
                     singleLine = true,
+                    readOnly = !editing,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
                         onSearch = {
-                            focusManager.moveFocus(FocusDirection.Down)
+                            editing = false
+                            focusFirstResult()
                         }
                     ),
                     shape = RoundedCornerShape(28.dp),
@@ -193,12 +237,20 @@ fun TvSearchScreen(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
                         .height(58.dp)
+                        .focusRequester(searchBarFocus)
+                        .onFocusChanged { if (!it.isFocused) editing = false }
                         .onPreviewKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
-                                focusManager.moveFocus(FocusDirection.Down)
-                                true
-                            } else {
-                                false
+                            if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionDown -> {
+                                    focusFirstResult()
+                                    true
+                                }
+                                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                    if (editing) keyboardController?.show() else editing = true
+                                    true
+                                }
+                                else -> false
                             }
                         },
                 )
@@ -221,14 +273,15 @@ fun TvSearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             contentPadding = PaddingValues(horizontal = 4.dp),
                         ) {
-                            items(
+                            itemsIndexed(
                                 items = row1,
-                                key = { it.name },
-                                contentType = { "genre" },
-                            ) { genre ->
+                                key = { _, genre -> genre.name },
+                                contentType = { _, _ -> "genre" },
+                            ) { index, genre ->
                                 TvGenreCard(
                                     name = genre.name,
                                     gradientColors = genre.gradientColors,
+                                    modifier = firstCard(Shelf.GENRES, index),
                                     onClick = {
                                         query = genre.name
                                         searchViewModel.onQueryChange(genre.name)
@@ -315,17 +368,18 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(
+                                itemsIndexed(
                                     items = tracks,
-                                    key = { it.track.uri },
-                                    contentType = { "track" },
-                                ) { item ->
+                                    key = { _, item -> item.track.uri },
+                                    contentType = { _, _ -> "track" },
+                                ) { index, item ->
                                     val isCurrent = currentAudio?.uri == item.track.uri
                                     TvTrackCard(
                                         track = item.track,
                                         isCurrentAudio = isCurrent,
                                         isPlaying = isPlaying,
                                         onClick = { tvViewModel.playTrack(item.track.toPlayableAudio()) },
+                                        modifier = firstCard(Shelf.TRACKS, index),
                                     )
                                 }
                             }
@@ -343,11 +397,11 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(
+                                itemsIndexed(
                                     items = derivedArtists,
-                                    key = { it.uri },
-                                    contentType = { "artist" },
-                                ) { artist ->
+                                    key = { _, artist -> artist.uri },
+                                    contentType = { _, _ -> "artist" },
+                                ) { index, artist ->
                                     val imageUrl by produceState<String?>(
                                         initialValue = (artist.getCover(CoverSize.MEDIUM)
                                             ?: artist.covers.firstOrNull())?.let { ALBUM_COVER_URL + it.uri },
@@ -372,6 +426,7 @@ fun TvSearchScreen(
                                         imageUrl = imageUrl,
                                         subtitle = "Artist",
                                         onClick = { tvViewModel.playUri(artist.uri) },
+                                        modifier = firstCard(Shelf.ARTISTS, index),
                                     )
                                 }
                             }
@@ -389,14 +444,15 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(
+                                itemsIndexed(
                                     items = derivedAlbums,
-                                    key = { it.uri },
-                                    contentType = { "album" },
-                                ) { album ->
+                                    key = { _, album -> album.uri },
+                                    contentType = { _, _ -> "album" },
+                                ) { index, album ->
                                     TvAlbumCard(
                                         album = album,
                                         onClick = { tvViewModel.playUri(album.uri) },
+                                        modifier = firstCard(Shelf.ALBUMS, index),
                                     )
                                 }
                             }
@@ -414,11 +470,11 @@ fun TvSearchScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(
+                                itemsIndexed(
                                     items = playlists,
-                                    key = { it.playlist.uri },
-                                    contentType = { "playlist" },
-                                ) { item ->
+                                    key = { _, item -> item.playlist.uri },
+                                    contentType = { _, _ -> "playlist" },
+                                ) { index, item ->
                                     val playlist = item.playlist
                                     val artworkUrl by produceState<String?>(initialValue = null, playlist.uri) {
                                         value = if (playlist.attributes.pictureId.isNotEmpty()) {
@@ -432,6 +488,7 @@ fun TvSearchScreen(
                                         playlist = playlist,
                                         artworkUrl = artworkUrl,
                                         onClick = { tvViewModel.playUri(playlist.uri) },
+                                        modifier = firstCard(Shelf.PLAYLISTS, index),
                                     )
                                 }
                             }

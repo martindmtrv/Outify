@@ -38,6 +38,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -67,9 +69,15 @@ fun TvHomeScreen(
     val isPlaying by tvViewModel.isPlaying.collectAsState()
     val deviceName by tvViewModel.deviceName.collectAsState()
 
+    // Without an initially focused element the first OK press on the remote does nothing.
+    val selectedChipFocus = remember { FocusRequester() }
+
     LaunchedEffect(Unit) {
         homeViewModel.refreshPlaybackLoginState()
         homeViewModel.loadData()
+    }
+    LaunchedEffect(Unit) {
+        selectedChipFocus.requestFocus()
     }
 
     LazyColumn(
@@ -111,7 +119,9 @@ fun TvHomeScreen(
                                 width = 2.dp,
                                 color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else Color.Transparent,
                             ),
-                            modifier = Modifier.padding(vertical = 2.dp),
+                            modifier = Modifier
+                                .padding(vertical = 2.dp)
+                                .then(if (isSelected) Modifier.focusRequester(selectedChipFocus) else Modifier),
                         ) {
                             Text(
                                 text = duration.label,

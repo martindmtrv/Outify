@@ -107,6 +107,9 @@ class TvViewModel @Inject constructor(
         viewModelScope.launch {
             spircState.collect { state ->
                 if (state == SpircState.Ready) {
+                    // The service owns the PCM sink; started lazily on the first load it
+                    // registers too late and librespot pauses on the failed first write.
+                    spirc.startPlaybackService()
                     refreshLogin()
                     AuthStateEventBus.tryEmitPlaybackLoggedIn()
                 }
